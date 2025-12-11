@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grepolis - Domination des Océans</title>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; padding: 0; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        const OceanDomination = () => {
+            const [loading, setLoading] = useState(false);
+            const [loadingMessage, setLoadingMessage] = useState('');
+            const [alliances, setAlliances] = useState({});
+            const [players, setPlayers] = useState({});
+            const [towns, setTowns] = useState([]);
+            const [selectedAlliance, setSelectedAlliance] = useState('');
+            const [filesLoaded, setFilesLoaded] = useState({
+                alliances: false,
+                players: false,
+                towns: false
+            });
+            const [lastUpdate, setLastUpdate] = useState(null);
+
+            // URLs GitHub
+            const GITHUB_URLS = {
+                alliances: 'https://sdurand-sdd.github.io/grepolis/alliances.txt',
+                players: 'https://sdurand-sdd.github.io/grepolis/players.txt',
+                towns: 'https://sdurand-sdd.github.io/grepolis/towns.txt'
+            };
+
+            // Fonction pour récupérer la date de modification
+            const getLastModified = async (url) => {
+                try {
+                    const response = await fetch(url, { method: 'HEAD' });
+                    const lastModified = response.headers.get('last-modified');
+                    return lastModified ? new Date(lastModified) : new Date();
+                } catch (error) {
+                    return new Date();
+                }
+            };
+
+            // Vérifier si les données sont fraîches (moins de 48h)
+            const isDataFresh = () => {
+                if (!lastUpdate) return false;
+                const now = new Date();
+                const diffHours = (now - lastUpdate) / (1000 * 60 * 60);
+                return diffHours < 48; // Moins de 48h = frais
+            };
+
+            // Formatage de la date en français
+            const formatDate = (date) => {
+                if (!date) return '';
+                return date.toLocaleDateString('fr-FR', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            };
+
+            // Fonction pour charger depuis GitHub
+            const loadFromGitHub = async () => {
+                setLoading(true);
+                
+                try {
+                    // Charger alliances
+                    setLoadingMessage('Chargement des alliances...');
+                    const alliancesResponse = await fetch(GITHUB_URLS.alliances);
+                    const alliancesText = await alliancesResponse.text();
+                    
+                    const alliancesData = {};
+                    alliancesText.split('\n').forEach(line => {
+                        if (line.trim()) {
+                            const parts = line.split(',');
+                            if (parts.length >= 2) {
+                                alliancesData[parts[0]] = {
+                                    id: parts[0],
+                                    name: decodeURIComponent(parts[1]),
+                                    points: parseInt(parts[2]) || 0
+                                };
+                            }
+                        }
+                    });
+                    setAlliances(alliancesData);
+                    setFilesLoaded(prev => ({ ...prev, alliances: true }));
+
+                    // Charger players
+                    setLoadingMessage('Chargement des joueurs...');
+                    const playersResponse = await fetch(GITHUB_URLS.players);
+                    const playersText = await playersResponse.text();
+                    
+                    const playersData = {};
+                    playersText.split('\n').forEach(line => {
+                        if (line.trim()) {
+                            const parts = line.split(',');
+                            if (parts.length >= 2) {
+                                playersData[parts[0]] = {
+                                    id: parts[0],
+                                    name: decodeURIComponent(parts[1]),
+                                    alliance_id: parts[2] || null
+                                };
+                            }
+                        }
+                    });
+                    setPlayers(playersData);
+                    setFilesLoaded(prev => ({ ...prev, players: true }));
+
+                    // Charger towns
+                    setLoadingMessage('Chargement des villes...');
+                    const townsResponse = await fetch(GITHUB_URLS.towns);
+                    const townsText = await townsResponse.text();
+                    
+                    const townsData = [];
+                    townsText.split('\n').forEach(line => {
+                        if (line.trim()) {
+                            const parts = line.split(',');
+                            if (parts.length >= 7) {
+                                const x = parseInt(parts[3]);
+                                const y = parseInt(parts[4]);
+                                const oceanX = Math.floor(x / 100);
+                                const oceanY = Math.floor(y / 100);
+                                const ocean = oceanX * 10 + oceanY;
+                                
+                                townsData.push({
+                                    id: parts[0],
+                                    player_id: parts[1],
+                                    x: x,
+                                    y: y,
+                                    points: parseInt(parts[6]) || 0,
+                                    ocean: ocean
+                                });
+                            }
+                        }
+                    });
+                    setTowns(townsData);
+                    setFilesLoaded(prev => ({ ...prev, towns: true }));
+
+                    // Récupérer les dates de modification
+                    const dates = await Promise.all([
+                        getLastModified(GITHUB_URLS.alliances),
+                        getLastModified(GITHUB_URLS.players),
+                        getLastModified(GITHUB_URLS.towns)
+                    ]);
+                    
+                    // Prendre la date la plus récente
+                    const latestDate = dates.reduce((latest, current) => 
+                        current > latest ? current : latest
+                    );
+                    
+                    setLastUpdate(latestDate);
+
+                } catch (error) {
+                    alert(`Erreur de chargement: ${error.message}\n\nVérifie les URLs GitHub.`);
+                } finally {
+                    setLoading(false);
+                    setLoadingMessage('');
+                }
+            };
+
+            // Charger automatiquement au démarrage
+            useEffect(() => {
+                loadFromGitHub();
+            }, []);
+
+            const handleFileUpload = (event, fileType) => {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                setLoading(true);
+                const reader = new FileReader();
+
+                reader.onload = (e) => {
+                    const text = e.target.result;
+
+                    if (fileType === 'alliances') {
+                        const alliancesData = {};
+                        text.split('\n').forEach(line => {
+                            if (line.trim()) {
+                                const parts = line.split(',');
+                                if (parts.length >= 2) {
+                                    alliancesData[parts[0]] = {
+                                        id: parts[0],
+                                        name: decodeURIComponent(parts[1]),
+                                        points: parseInt(parts[2]) || 0
+                                    };
+                                }
+                            }
+                        });
+                        setAlliances(alliancesData);
+                        setFilesLoaded(prev => ({ ...prev, alliances: true }));
+                    }
+
+                    if (fileType === 'players') {
+                        const playersData = {};
+                        text.split('\n').forEach(line => {
+                            if (line.trim()) {
+                                const parts = line.split(',');
+                                if (parts.length >= 2) {
+                                    playersData[parts[0]] = {
+                                        id: parts[0],
+                                        name: decodeURIComponent(parts[1]),
+                                        alliance_id: parts[2] || null
+                                    };
+                                }
+                            }
+                        });
+                        setPlayers(playersData);
+                        setFilesLoaded(prev => ({ ...prev, players: true }));
+                    }
+
+                    if (fileType === 'towns') {
+                        const townsData = [];
+                        text.split('\n').forEach(line => {
+                            if (line.trim()) {
+                                const parts = line.split(',');
+                                if (parts.length >= 7) {
+                                    const x = parseInt(parts[3]);
+                                    const y = parseInt(parts[4]);
+                                    const oceanX = Math.floor(x / 100);
+                                    const oceanY = Math.floor(y / 100);
+                                    const ocean = oceanX * 10 + oceanY;
+                                    
+                                    townsData.push({
+                                        id: parts[0],
+                                        player_id: parts[1],
+                                        x: x,
+                                        y: y,
+                                        points: parseInt(parts[6]) || 0,
+                                        ocean: ocean
+                                    });
+                                }
+                            }
+                        });
+                        setTowns(townsData);
+                        setFilesLoaded(prev => ({ ...prev, towns: true }));
+                    }
+
+                    // Mettre à jour la date pour le chargement manuel
+                    setLastUpdate(new Date());
+                    setLoading(false);
+                };
+
+                reader.readAsText(file);
+            };
+
+            // Calculer les stats par océan
+            const getOceanStats = () => {
+                const oceanStats = {};
+
+                towns.forEach(town => {
+                    const player = players[town.player_id];
+                    const allianceId = player?.alliance_id;
+                    
+                    if (!allianceId) return;
+
+                    if (!oceanStats[town.ocean]) {
+                        oceanStats[town.ocean] = {};
+                    }
+
+                    if (!oceanStats[town.ocean][allianceId]) {
+                        oceanStats[town.ocean][allianceId] = {
+                            alliance_id: allianceId,
+                            alliance_name: alliances[allianceId]?.name || 'Inconnu',
+                            towns_count: 0,
+                            points: 0
+                        };
+                    }
+
+                    oceanStats[town.ocean][allianceId].towns_count++;
+                    oceanStats[town.ocean][allianceId].points += town.points;
+                });
+
+                return oceanStats;
+            };
+
+            const oceanStats = getOceanStats();
+
+            // Obtenir le classement des alliances pour un océan
+            const getOceanRanking = (ocean) => {
+                if (!oceanStats[ocean]) return [];
+                
+                return Object.values(oceanStats[ocean])
+                    .sort((a, b) => b.points - a.points || b.towns_count - a.towns_count);
+            };
+
+            // Liste des alliances pour le menu
+            const alliancesList = Object.values(alliances).sort((a, b) => 
+                a.name.localeCompare(b.name)
+            );
+
+            const allFilesLoaded = filesLoaded.alliances && filesLoaded.players && filesLoaded.towns;
+
+            if (!allFilesLoaded) {
+                return (
+                    <div className="w-full min-h-screen bg-slate-900 flex items-center justify-center p-8">
+                        <div className="max-w-2xl w-full bg-slate-800 rounded-lg p-8 shadow-xl">
+                            <h1 className="text-3xl font-bold text-amber-400 mb-6 text-center">
+                                Domination des Océans - Grepolis
+                            </h1>
+                            
+                            {loading ? (
+                                <div className="text-center">
+                                    <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-amber-400 mx-auto mb-4"></div>
+                                    <p className="text-slate-300 text-lg">{loadingMessage}</p>
+                                    <p className="text-slate-400 text-sm mt-2">Chargement depuis GitHub...</p>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="text-center mb-6">
+                                        <p className="text-slate-300 mb-2">Les données ne sont pas encore chargées.</p>
+                                        <button
+                                            onClick={loadFromGitHub}
+                                            className="py-3 px-6 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition-colors"
+                                        >
+                                            🔄 Recharger depuis GitHub
+                                        </button>
+                                    </div>
+
+                                    <div className="relative">
+                                        <div className="absolute inset-0 flex items-center">
+                                            <div className="w-full border-t border-slate-600"></div>
+                                        </div>
+                                        <div className="relative flex justify-center text-sm">
+                                            <span className="px-4 bg-slate-800 text-slate-400">OU charger manuellement</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-4 mt-6">
+                                        <div className="border-2 border-dashed border-slate-600 rounded-lg p-4">
+                                            <label className="block">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="text-white font-medium">1. Alliances.txt</span>
+                                                    {filesLoaded.alliances && <span className="text-green-400">✓</span>}
+                                                </div>
+                                                <input type="file" accept=".txt" onChange={(e) => handleFileUpload(e, 'alliances')}
+                                                    className="block w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-amber-500 file:text-white hover:file:bg-amber-600 file:cursor-pointer" />
+                                            </label>
+                                        </div>
+
+                                        <div className="border-2 border-dashed border-slate-600 rounded-lg p-4">
+                                            <label className="block">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="text-white font-medium">2. Players.txt</span>
+                                                    {filesLoaded.players && <span className="text-green-400">✓</span>}
+                                                </div>
+                                                <input type="file" accept=".txt" onChange={(e) => handleFileUpload(e, 'players')}
+                                                    className="block w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-amber-500 file:text-white hover:file:bg-amber-600 file:cursor-pointer" />
+                                            </label>
+                                        </div>
+
+                                        <div className="border-2 border-dashed border-slate-600 rounded-lg p-4">
+                                            <label className="block">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="text-white font-medium">3. Towns.txt</span>
+                                                    {filesLoaded.towns && <span className="text-green-400">✓</span>}
+                                                </div>
+                                                <input type="file" accept=".txt" onChange={(e) => handleFileUpload(e, 'towns')}
+                                                    className="block w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-amber-500 file:text-white hover:file:bg-amber-600 file:cursor-pointer" />
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-8 p-4 bg-slate-700 rounded-lg">
+                                        <h3 className="text-amber-400 font-semibold mb-2">📋 Comment mettre à jour :</h3>
+                                        <ol className="text-slate-300 text-sm list-decimal pl-4 space-y-1">
+                                            <li>Depuis Grepolis, exporter les 3 fichiers (.txt)</li>
+                                            <li>Aller sur ton dépôt GitHub</li>
+                                            <li>Remplacer les 3 fichiers existants</li>
+                                            <li>Cliquer sur "Recharger depuis GitHub"</li>
+                                        </ol>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="w-full min-h-screen bg-slate-900 p-8">
+                    <div className="max-w-7xl mx-auto">
+                        {/* EN-TÊTE AVEC DATE DE MISE À JOUR */}
+                        <div className="flex justify-between items-start mb-6">
+                            <div>
+                                <h1 className="text-3xl font-bold text-amber-400">
+                                    Domination des Océans - Grepolis FR39
+                                </h1>
+                                {lastUpdate && (
+                                    <div className="mt-2 flex items-center gap-2">
+                                        <div className={`w-3 h-3 rounded-full ${isDataFresh() ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+                                        <span className="text-slate-400 text-sm">
+                                            📅 Données du {formatDate(lastUpdate)}
+                                            {!isDataFresh() && (
+                                                <span className="text-amber-400 ml-2">
+                                                    ⚠️ Mise à jour recommandée
+                                                </span>
+                                            )}
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+                            
+                            <div className="text-right space-y-2">
+                                <button
+                                    onClick={() => {
+                                        setFilesLoaded({ alliances: false, players: false, towns: false });
+                                        setAlliances({});
+                                        setPlayers({});
+                                        setTowns([]);
+                                        setSelectedAlliance('');
+                                    }}
+                                    className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm flex items-center gap-2"
+                                >
+                                    🔄 Recharger les données
+                                </button>
+                                
+                                {lastUpdate && (
+                                    <div className="text-slate-400 text-xs">
+                                        <div className="flex items-center gap-1">
+                                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                            <span>Données récentes (&lt; 48h)</span>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                                            <span>Données anciennes</span>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* SELECTION D'ALLIANCE */}
+                        <div className="bg-slate-800 p-4 rounded-lg mb-6">
+                            <label className="block mb-2 text-white font-medium">
+                                Choisir une alliance :
+                            </label>
+                            <select
+                                value={selectedAlliance}
+                                onChange={(e) => setSelectedAlliance(e.target.value)}
+                                className="w-full px-4 py-2 bg-slate-700 text-white rounded-lg border border-slate-600"
+                            >
+                                <option value="">-- Sélectionnez une alliance --</option>
+                                {alliancesList.map(alliance => (
+                                    <option key={alliance.id} value={alliance.id}>
+                                        {alliance.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* CARTE DES OCÉANS */}
+                        {selectedAlliance && (
+                            <div className="bg-slate-800 p-6 rounded-lg">
+                                <h2 className="text-xl font-bold text-amber-400 mb-4 text-center">
+                                    Carte de domination : {alliances[selectedAlliance]?.name}
+                                </h2>
+                                
+                                <div className="grid grid-cols-10 gap-1 max-w-5xl mx-auto">
+                                    {Array.from({ length: 100 }, (_, i) => {
+                                        const oceanY = Math.floor(i / 10);
+                                        const oceanX = i % 10;
+                                        const ocean = oceanX * 10 + oceanY;
+                                        
+                                        const ranking = getOceanRanking(ocean);
+                                        const top1 = ranking[0];
+                                        const top2 = ranking[1];
+                                        const top3 = ranking[2];
+                                        
+                                        const selectedAllianceData = ranking.find(r => r.alliance_id === selectedAlliance);
+                                        const selectedRank = selectedAllianceData ? ranking.indexOf(selectedAllianceData) + 1 : null;
+                                        const isTop1 = selectedRank === 1;
+                                        const hasPresence = selectedAllianceData !== undefined;
+
+                                        // Calculer les écarts (points et villes manquants)
+                                        const pointsGap = hasPresence && !isTop1 ? top1.points - selectedAllianceData.points : 0;
+                                        const townsGap = hasPresence && !isTop1 ? top1.towns_count - selectedAllianceData.towns_count : 0;
+
+                                        let bgColor = 'bg-slate-700';
+                                        let borderColor = 'border-slate-600';
+                                        let textColor = 'text-slate-500';
+
+                                        if (hasPresence) {
+                                            if (isTop1) {
+                                                bgColor = 'bg-green-600';
+                                                borderColor = 'border-green-400';
+                                                textColor = 'text-white';
+                                            } else if (selectedRank === 2) {
+                                                bgColor = 'bg-yellow-600';
+                                                borderColor = 'border-yellow-400';
+                                                textColor = 'text-white';
+                                            } else if (selectedRank === 3) {
+                                                bgColor = 'bg-orange-600';
+                                                borderColor = 'border-orange-400';
+                                                textColor = 'text-white';
+                                            } else {
+                                                bgColor = 'bg-red-700';
+                                                borderColor = 'border-red-500';
+                                                textColor = 'text-white';
+                                            }
+                                        }
+
+                                        return (
+                                            <div
+                                                key={ocean}
+                                                className={`${bgColor} ${borderColor} border-2 aspect-square flex flex-col items-center justify-center rounded cursor-pointer hover:opacity-80 transition-opacity relative group`}
+                                                title={hasPresence ? `Océan ${ocean.toString().padStart(2, '0')} - Rang #${selectedRank}` : `Océan ${ocean.toString().padStart(2, '0')} - Pas de présence`}
+                                            >
+                                                <div className={`text-xs font-bold ${textColor}`}>
+                                                    {ocean.toString().padStart(2, '0')}
+                                                </div>
+                                                {hasPresence && (
+                                                    <div className={`text-xs ${textColor}`}>
+                                                        #{selectedRank}
+                                                    </div>
+                                                )}
+
+                                                {/* Tooltip au survol */}
+                                                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block z-10 w-72">
+                                                    <div className="bg-slate-900 text-white p-3 rounded-lg shadow-xl border border-slate-600">
+                                                        <div className="font-bold text-amber-400 mb-2">
+                                                            Océan {ocean.toString().padStart(2, '0')}
+                                                        </div>
+                                                        {hasPresence ? (
+                                                            <>
+                                                                <div className="mb-2">
+                                                                    <span className="font-semibold">{alliances[selectedAlliance]?.name}</span>
+                                                                    <span className="text-slate-400"> - Rang #{selectedRank}</span>
+                                                                </div>
+                                                                {isTop1 ? (
+                                                                    <div className="space-y-1 text-sm">
+                                                                        <div className="text-green-400">👑 DOMINANT</div>
+                                                                        <div>Avance points: +{(top1.points - (top2?.points || 0)).toLocaleString()} pts</div>
+                                                                        <div>Avance villes: +{(top1.towns_count - (top2?.towns_count || 0))} villes</div>
+                                                                        <div>{top1.towns_count} villes - {top1.points.toLocaleString()} pts</div>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="space-y-1 text-sm">
+                                                                        <div className="text-red-400">
+                                                                            Retard points: -{pointsGap.toLocaleString()} pts
+                                                                        </div>
+                                                                        <div className="text-red-400">
+                                                                            Retard villes: -{townsGap} villes
+                                                                        </div>
+                                                                        <div>{selectedAllianceData.towns_count} villes - {selectedAllianceData.points.toLocaleString()} pts</div>
+                                                                    </div>
+                                                                )}
+                                                                <div className="mt-2 pt-2 border-t border-slate-700 space-y-1 text-xs">
+                                                                    {[top1, top2, top3].filter(Boolean).map((alliance, idx) => (
+                                                                        <div key={alliance.alliance_id}>
+                                                                            #{idx + 1} {alliance.alliance_name}: {alliance.towns_count} villes - {alliance.points.toLocaleString()} pts
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </>
+                                                        ) : (
+                                                            <div className="text-slate-400 text-sm">
+                                                                Pas de présence dans cet océan
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* LÉGENDE */}
+                                <div className="mt-6 flex flex-wrap justify-center gap-4 text-sm">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 bg-green-600 border-2 border-green-400 rounded"></div>
+                                        <span className="text-white">Rang #1 (Dominant)</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 bg-yellow-600 border-2 border-yellow-400 rounded"></div>
+                                        <span className="text-white">Rang #2</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 bg-orange-600 border-2 border-orange-400 rounded"></div>
+                                        <span className="text-white">Rang #3</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 bg-red-700 border-2 border-red-500 rounded"></div>
+                                        <span className="text-white">Rang #4+</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 bg-slate-700 border-2 border-slate-600 rounded"></div>
+                                        <span className="text-white">Pas de présence</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {!selectedAlliance && (
+                            <div className="text-center text-slate-400 mt-12">
+                                Sélectionnez une alliance pour voir sa domination par océan
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<OceanDomination />, document.getElementById('root'));
+    </script>
+</body>
+</html>
