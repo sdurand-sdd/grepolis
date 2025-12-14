@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grepolis FR39 - Cartes des Océans</title>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        const GrepolisOceans = () => {
+            // États principaux
+            const [isFetching, setIsFetching] = useState(true);
+            const [lastUpdate, setLastUpdate] = useState(null); // Date de la dernière modification du fichier
+            const [cities, setCities] = useState([]);
+            const [alliances, setAlliances] = useState({});
+            const [players, setPlayers] = useState({});
+            
+            // États de l'interface utilisateur
+            const [selectedAlliance, setSelectedAlliance] = useState('all');
+            const [search, setSearch] = useState('');
+            const [hoveredCity, setHoveredCity] = useState(null);
+            const [selectedCity, setSelectedCity] = useState(null);
+            const [customColors, setCustomColors] = useState({});
+            const [hiddenAlliances, setHiddenAlliances] = useState(new Set());
+            const [selectedOcean, setSelectedOcean] = useState('25');
+            const [viewMode, setViewMode] = useState('ocean'); // 'ocean' ou 'world'
+
+            // --- Fonctions utilitaires ---
+
+            // Générer une couleur pour chaque alliance
+            const generateColor = (index) => {
+                const colors = [
+                    '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6',
+                    '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1',
+                    '#14b8a6', '#a855f7', '#22c55e', '#eab308', '#fb923c',
+                    '#0ea5e9', '#d946ef', '#64748b', '#facc15', '#2dd4bf'
+                ];
+                return colors[index % colors.length];
+            };
+
+            // Récupère la date de modification du fichier sur GitHub (via la méthode HEAD)
+            const getLastModified = async (url) => {
+                try {
+                    const response = await fetch(url, { method: 'HEAD' });
+                    const lastModified = response.headers.get('Last-Modified');
+                    return lastModified ? new Date(lastModified) : new Date();
+                } catch (error) {
+                    return new Date();
+                }
+            };
+            
+            // Fonction utilitaire pour formater la date AVEC LE FIX du fuseau horaire
+            const formatDate = (date) => {
+                if (!date) return 'N/A';
+                
+                // FIX: Force l'affichage dans le fuseau horaire de Paris
+                // Cela garantit que l'heure affichée (ex: 20:00) correspond à l'heure locale de votre mise à jour.
+                const options = { 
+                    day: '2-digit', 
+                    month: '2-digit', 
+                    year: 'numeric', 
+                    hour: '2-digit', 
+                    minute: '2-digit', 
+                    second: '2-digit',
+                    timeZone: 'Europe/Paris' 
+                };
+                
+                return date.toLocaleString('fr-FR', options);
+            };
+
+            // --- Logique de chargement des données ---
+
+            const loadDataFromGitHub = async () => {
+                setIsFetching(true);
+                let alliancesData = {};
+                let playersData = {};
+                
+                try {
+                    // 1. Charger Alliances.txt
+                    const alliancesResponse = await fetch('./alliances.txt');
+                    const alliancesText = await alliancesResponse.text();
+                    alliancesText.split('\n').forEach(line => {
+                        if (line.trim()) {
+                            const parts = line.split(',');
+                            if (parts.length >= 2) {
+                                alliancesData[parts[0]] = {
+                                    id: parts[0],
+                                    name: parts[1],
+                                    points: parts[2] || '0',
+                                    towns: parts[3] || '0',
+                                    members: parts[4] || '0',
+                                    rank: parts[5] || '0'
+                                };
+                            }
+                        }
+                    });
+                    setAlliances(alliancesData);
+
+                    // 2. Charger Players.txt
+                    const playersResponse = await fetch('./players.txt');
+                    const playersText = await playersResponse.text();
+                    playersText.split('\n').forEach(line => {
+                        if (line.trim()) {
+                            const parts = line.split(',');
+                            if (parts.length >= 2) {
+                                playersData[parts[0]] = {
+                                    id: parts[0],
+                                    name: parts[1],
+                                    alliance_id: parts[2] || null,
+                                    points: parts[3] || '0',
+                                    rank: parts[4] || '0',
+                                    towns: parts[5] || '0'
+                                };
+                            }
+                        }
+                    });
+                    setPlayers(playersData);
+
+                    // 3. Charger Towns.txt
+                    const townsResponse = await fetch('./towns.txt');
+                    const townsText = await townsResponse.text();
+                    const townsData = [];
+                    townsText.split('\n').forEach(line => {
+                        if (line.trim()) {
+                            const parts = line.split(',');
+                            if (parts.length >= 7) {
+                                const x = parseInt(parts[3]);
+                                const y = parseInt(parts[4]);
+                                
+                                const oceanX = Math.floor(x / 100);
+                                const oceanY = Math.floor(y / 100);
+                                const ocean = oceanX * 10 + oceanY;
+                                
+                                townsData.push({
+                                    id: parts[0],
+                                    player_id: parts[1],
+                                    name: parts[2],
+                                    x: x,
+                                    y: y,
+                                    island: parts[5],
+                                    points: parts[6],
+                                    ocean: ocean.toString().padStart(2, '0')
+                                });
+                            }
+                        }
+                    });
+                    
+                    // Enrichir les villes
+                    const enrichedTowns = townsData.map(town => {
+                        const player = playersData[town.player_id];
+                        const allianceId = player?.alliance_id;
+                        return {
+                            ...town,
+                            player_name: player?.name || 'Inconnu',
+                            alliance_id: allianceId,
+                            alliance_name: allianceId && alliancesData[allianceId] ? alliancesData[allianceId].name : 'Sans alliance'
+                        };
+                    });
+
+                    setCities(enrichedTowns);
+                    
+                    // 4. Récupérer et définir la date de mise à jour la plus récente
+                    const dates = await Promise.all([
+                        getLastModified('./alliances.txt'), 
+                        getLastModified('./players.txt'),
+                        getLastModified('./towns.txt')
+                    ]);
+                    
+                    const latestDate = dates.reduce((latest, current) => 
+                        current > latest ? current : latest
+                    );
+                    
+                    setLastUpdate(latestDate); 
+
+                } catch (error) {
+                    console.error("Erreur lors du chargement des données depuis GitHub :", error);
+                    alert("Erreur: Impossible de charger les fichiers de données. Assurez-vous qu'ils sont bien présents à côté du fichier HTML sur GitHub.");
+                } finally {
+                    setIsFetching(false);
+                }
+            };
+
+            // Lancement du chargement au montage du composant
+            React.useEffect(() => {
+                loadDataFromGitHub();
+            }, []);
+            
+            // --- Logique de filtrage et d'affichage ---
+
+            const getOceanViewBox = (ocean) => {
+                const oceanNum = parseInt(ocean);
+                const oceanX = Math.floor(oceanNum / 10);
+                const oceanY = oceanNum % 10;
+                const startX = oceanX * 100;
+                const startY = oceanY * 100;
+                return `${startX} ${startY} 100 100`;
+            };
+
+            const toggleAllianceVisibility = (alliance) => {
+                setHiddenAlliances(prev => {
+                    const newSet = new Set(prev);
+                    if (newSet.has(alliance)) {
+                        newSet.delete(alliance);
+                    } else {
+                        newSet.add(alliance);
+                    }
+                    return newSet;
+                });
+            };
+
+            const handleColorChange = (alliance, color) => {
+                setCustomColors(prev => ({
+                    ...prev,
+                    [alliance]: color
+                }));
+            };
+            
+            // Obtenir les océans disponibles
+            const availableOceans = [...new Set(cities.map(c => c.ocean))].sort();
+            
+            // Obtenir les alliances uniques pour l'océan sélectionné
+            const citiesInSelectedOcean = cities.filter(city => city.ocean === selectedOcean);
+            const uniqueAlliances = [...new Set(citiesInSelectedOcean.map(c => c.alliance_name))].sort();
+            
+            const allianceColors = {};
+            uniqueAlliances.forEach((alliance, index) => {
+                allianceColors[alliance] = customColors[alliance] || generateColor(index);
+            });
+
+            // Filtrer les villes selon les critères
+            const filteredCities = citiesInSelectedOcean.filter(city => {
+                const matchSearch = city.name.toLowerCase().includes(search.toLowerCase()) ||
+                                  city.player_name.toLowerCase().includes(search.toLowerCase());
+                const matchAlliance = selectedAlliance === 'all' || city.alliance_name === selectedAlliance;
+                const isVisible = !hiddenAlliances.has(city.alliance_name);
+                return matchSearch && matchAlliance && isVisible;
+            });
+
+            // Grouper les villes par coordonnées
+            const groupedCities = {};
+            filteredCities.forEach(city => {
+                const key = `${city.x},${city.y}`;
+                if (!groupedCities[key]) {
+                    groupedCities[key] = [];
+                }
+                groupedCities[key].push(city);
+            });
+
+            // Calculer les statistiques par océan
+            const oceanStats = {};
+            cities.forEach(city => {
+                if (!oceanStats[city.ocean]) {
+                    oceanStats[city.ocean] = {
+                        totalCities: 0,
+                        alliances: new Set(),
+                        totalPoints: 0
+                    };
+                }
+                oceanStats[city.ocean].totalCities++;
+                oceanStats[city.ocean].alliances.add(city.alliance_name);
+                oceanStats[city.ocean].totalPoints += parseInt(city.points);
+            });
+            
+            // --- Rendu ---
+            
+            // Écran de chargement
+            if (isFetching) { 
+                return (
+                    <div className="w-full h-screen bg-slate-900 flex items-center justify-center">
+                        <div className="text-center">
+                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-400 mx-auto"></div>
+                            <p className="text-slate-300 mt-4 text-xl">
+                                Chargement des données de Grepolis depuis GitHub...
+                            </p>
+                            <p className="text-slate-400 mt-2">
+                                (alliances.txt, players.txt, towns.txt)
+                            </p>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="w-full h-screen bg-slate-900 flex flex-col">
+                    <div className="bg-slate-800 p-4 shadow-lg">
+                        <div className="flex flex-wrap justify-between items-center gap-4 mb-2"> 
+                            <h1 className="text-2xl font-bold text-amber-400 flex items-center gap-2">
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                </svg>
+                                Grepolis FR39 - Océan {selectedOcean}
+                            </h1>
+                            
+                            {/* AFFICHAGE DE LA DATE CORRIGÉE */}
+                            <div className="text-slate-400 text-sm italic">
+                                Données mises à jour le : <span className="text-amber-300 font-medium">{formatDate(lastUpdate)}</span>
+                            </div>
+                            
+                            <div className="flex gap-2">
+                                <select
+                                    value={selectedOcean}
+                                    onChange={(e) => setSelectedOcean(e.target.value)}
+                                    className="px-4 py-2 bg-slate-700 text-white rounded-lg border border-slate-600 focus:border-amber-400 focus:outline-none"
+                                >
+                                    {availableOceans.map(ocean => (
+                                        <option key={ocean} value={ocean}>
+                                            Océan {ocean} ({oceanStats[ocean]?.totalCities || 0} villes)
+                                        </option>
+                                    ))}
+                                </select>
+                                
+                                <button
+                                    onClick={() => setViewMode(viewMode === 'ocean' ? 'world' : 'ocean')}
+                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                                >
+                                    {viewMode === 'ocean' ? 'Vue Monde' : 'Vue Océan'}
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div className="flex gap-4 flex-wrap">
+                            <div className="flex-1 min-w-64">
+                                <input
+                                    type="text"
+                                    placeholder="Rechercher une ville ou un joueur..."
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    className="w-full pl-4 pr-4 py-2 bg-slate-700 text-white rounded-lg border border-slate-600 focus:border-amber-400 focus:outline-none"
+                                />
+                            </div>
+                            
+                            <select
+                                value={selectedAlliance}
+                                onChange={(e) => setSelectedAlliance(e.target.value)}
+                                className="px-4 py-2 bg-slate-700 text-white rounded-lg border border-slate-600 focus:border-amber-400 focus:outline-none"
+                            >
+                                <option value="all">Toutes les alliances</option>
+                                {uniqueAlliances.map(alliance => (
+                                    <option key={alliance} value={alliance}>
+                                        {alliance} ({citiesInSelectedOcean.filter(c => c.alliance_name === alliance).length})
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="mt-3 text-slate-300 text-sm">
+                            <span className="font-semibold text-amber-400">{filteredCities.length}</span> villes affichées sur <span className="font-semibold text-amber-400">{citiesInSelectedOcean.length}</span> au total dans l'océan {selectedOcean}
+                        </div>
+                    </div>
+
+                    <div className="flex-1 flex overflow-hidden">
+                        <div className="flex-1 overflow-auto bg-slate-950 p-8">
+                            {viewMode === 'ocean' ? (
+                                // VUE OCÉAN
+                                <svg
+                                    viewBox={getOceanViewBox(selectedOcean)}
+                                    className="w-full h-full"
+                                    style={{ minWidth: '1000px', minHeight: '1000px' }}
+                                >
+                                    {/* Grille de l'océan */}
+                                    <rect 
+                                        x={parseInt(selectedOcean) >= 10 ? Math.floor(parseInt(selectedOcean) / 10) * 100 : 0} 
+                                        y={(parseInt(selectedOcean) % 10) * 100} 
+                                        width="100" 
+                                        height="100" 
+                                        fill="#1e3a5f" 
+                                        stroke="#0f172a" 
+                                        strokeWidth="0.5" 
+                                    />
+                                    <text 
+                                        x={parseInt(selectedOcean) >= 10 ? Math.floor(parseInt(selectedOcean) / 10) * 100 + 50 : 50} 
+                                        y={(parseInt(selectedOcean) % 10) * 100 + 50} 
+                                        textAnchor="middle" 
+                                        dy="0.35em" 
+                                        fill="#fbbf24" 
+                                        fontSize="12" 
+                                        fontWeight="bold"
+                                    >
+                                        {selectedOcean}
+                                    </text>
+
+                                    {/* Grille secondaire 5x5 */}
+                                    {(() => {
+                                        const gridLines = [];
+                                        const startX = parseInt(selectedOcean) >= 10 ? Math.floor(parseInt(selectedOcean) / 10) * 100 : 0;
+                                        const startY = (parseInt(selectedOcean) % 10) * 100;
+                                        
+                                        for (let i = 1; i < 5; i++) {
+                                            // Lignes verticales
+                                            gridLines.push(
+                                                <line
+                                                    key={`v-${i}`}
+                                                    x1={startX + i * 20}
+                                                    y1={startY}
+                                                    x2={startX + i * 20}
+                                                    y2={startY + 100}
+                                                    stroke="#64748b"
+                                                    strokeWidth="0.3"
+                                                    opacity="0.5"
+                                                />
+                                            );
+                                            // Lignes horizontales
+                                            gridLines.push(
+                                                <line
+                                                    key={`h-${i}`}
+                                                    x1={startX}
+                                                    y1={startY + i * 20}
+                                                    x2={startX + 100}
+                                                    y2={startY + i * 20}
+                                                    stroke="#64748b"
+                                                    strokeWidth="0.3"
+                                                    opacity="0.5"
+                                                />
+                                            );
+                                        }
+                                        return gridLines;
+                                    })()}
+
+                                    {/* Villes */}
+                                    {Object.entries(groupedCities).map(([coords, citiesAtLocation]) => {
+                                        const [x, y] = coords.split(',').map(Number);
+                                        const isHovered = hoveredCity && citiesAtLocation.some(c => c.id === hoveredCity.id);
+                                        const isSelected = selectedCity && citiesAtLocation.some(c => c.id === selectedCity.id);
+                                        const allianceColor = allianceColors[citiesAtLocation[0].alliance_name] || '#6b7280';
+                                        
+                                        return (
+                                            <g key={coords}>
+                                                <circle
+                                                    cx={x}
+                                                    cy={y}
+                                                    r={isHovered || isSelected ? 2.5 : 1.5}
+                                                    fill={allianceColor}
+                                                    stroke={isSelected ? '#fbbf24' : isHovered ? '#fff' : allianceColor}
+                                                    strokeWidth={isSelected ? 1 : isHovered ? 0.5 : 0}
+                                                    opacity={isHovered || isSelected ? 1 : 0.9}
+                                                    onMouseEnter={() => setHoveredCity(citiesAtLocation[0])}
+                                                    onMouseLeave={() => setHoveredCity(null)}
+                                                    onClick={() => setSelectedCity(citiesAtLocation[0])}
+                                                    style={{ cursor: 'pointer' }}
+                                                />
+                                                {citiesAtLocation.length > 1 && (
+                                                    <text
+                                                        x={x}
+                                                        y={y}
+                                                        textAnchor="middle"
+                                                        dy="0.3em"
+                                                        fill="white"
+                                                        fontSize="2"
+                                                        fontWeight="bold"
+                                                        style={{ pointerEvents: 'none' }}
+                                                    >
+                                                        {citiesAtLocation.length}
+                                                    </text>
+                                                )}
+                                                {(isHovered || isSelected) && (
+                                                    <>
+                                                        <text
+                                                            x={x}
+                                                            y={y - 6}
+                                                            textAnchor="middle"
+                                                            fill="#fbbf24"
+                                                            fontSize="3"
+                                                            fontWeight="bold"
+                                                            style={{ pointerEvents: 'none' }}
+                                                        >
+                                                            {citiesAtLocation[0].name}
+                                                        </text>
+                                                        <text
+                                                            x={x}
+                                                            y={y - 3}
+                                                            textAnchor="middle"
+                                                            fill="#94a3b8"
+                                                            fontSize="2.5"
+                                                            style={{ pointerEvents: 'none' }}
+                                                        >
+                                                            {citiesAtLocation[0].player_name}
+                                                        </text>
+                                                    </>
+                                                )}
+                                            </g>
+                                        );
+                                    })}
+                                </svg>
+                            ) : (
+                                // VUE MONDE
+                                <svg
+                                    viewBox="0 0 1000 1000"
+                                    className="w-full h-full"
+                                    style={{ minWidth: '1000px', minHeight: '1000px' }}
+                                >
+                                    {/* Grille du monde */}
+                                    {Array.from({ length: 10 }, (_, y) => 
+                                        Array.from({ length: 10 }, (_, x) => {
+                                            const oceanNum = x * 10 + y;
+                                            const oceanId = oceanNum.toString().padStart(2, '0');
+                                            const isSelected = oceanId === selectedOcean;
+                                            const stats = oceanStats[oceanId];
+                                            
+                                            return (
+                                                <g key={oceanId}>
+                                                    <rect
+                                                        x={x * 100}
+                                                        y={y * 100}
+                                                        width="100"
+                                                        height="100"
+                                                        fill={isSelected ? '#334155' : '#1e293b'}
+                                                        stroke={isSelected ? '#fbbf24' : '#475569'}
+                                                        strokeWidth={isSelected ? 2 : 1}
+                                                        onClick={() => setSelectedOcean(oceanId)}
+                                                        style={{ cursor: 'pointer' }}
+                                                    />
+                                                    <text
+                                                        x={x * 100 + 50}
+                                                        y={y * 100 + 50}
+                                                        textAnchor="middle"
+                                                        dy="0.35em"
+                                                        fill={isSelected ? '#fbbf24' : '#94a3b8'}
+                                                        fontSize="8"
+                                                        fontWeight="bold"
+                                                    >
+                                                        {oceanId}
+                                                    </text>
+                                                    {stats && (
+                                                        <text
+                                                            x={x * 100 + 50}
+                                                            y={y * 100 + 65}
+                                                            textAnchor="middle"
+                                                            fill="#64748b"
+                                                            fontSize="6"
+                                                        >
+                                                            {stats.totalCities} villes
+                                                        </text>
+                                                    )}
+                                                </g>
+                                            );
+                                        })
+                                    )}
+                                </svg>
+                            )}
+                        </div>
+
+                        <div className="w-80 bg-slate-800 overflow-y-auto p-4 border-l border-slate-700">
+                            <h3 className="text-lg font-bold text-amber-400 mb-4">
+                                {hoveredCity || selectedCity ? 'Détails' : 'Alliances'}
+                            </h3>
+
+                            {(hoveredCity || selectedCity) ? (
+                                <div className="space-y-2">
+                                    {groupedCities[`${(hoveredCity || selectedCity).x},${(hoveredCity || selectedCity).y}`]?.map(city => (
+                                        <div key={city.id} className="bg-slate-700 p-3 rounded-lg">
+                                            <div className="font-semibold text-white">{city.name}</div>
+                                            <div className="text-sm text-slate-300 mt-1 space-y-1">
+                                                <div>Joueur: {city.player_name}</div>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: allianceColors[city.alliance_name] }}></div>
+                                                    {city.alliance_name}
+                                                </div>
+                                                <div>Points: {parseInt(city.points).toLocaleString()}</div>
+                                                <div>Position: ({city.x}, {city.y})</div>
+                                                <div>Océan: {city.ocean}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {uniqueAlliances.map(alliance => {
+                                        const isHidden = hiddenAlliances.has(alliance);
+                                        return (
+                                            <div key={alliance} className={`bg-slate-700 p-3 rounded-lg transition-opacity ${isHidden ? 'opacity-50' : ''}`}>
+                                                <div className="flex items-center gap-3 mb-2">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={!isHidden}
+                                                        onChange={() => toggleAllianceVisibility(alliance)}
+                                                        className="w-5 h-5 rounded cursor-pointer"
+                                                        title="Afficher/Masquer"
+                                                    />
+                                                    <input
+                                                        type="color"
+                                                        value={allianceColors[alliance]}
+                                                        onChange={(e) => handleColorChange(alliance, e.target.value)}
+                                                        className="w-8 h-8 rounded cursor-pointer border-2 border-slate-500"
+                                                        title="Changer la couleur"
+                                                    />
+                                                    <div className="flex-1">
+                                                        <div className="text-slate-200 font-medium">{alliance}</div>
+                                                        <div className="text-slate-400 text-sm">
+                                                            {citiesInSelectedOcean.filter(c => c.alliance_name === alliance).length} villes
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                    
+                                    <div className="mt-6 pt-4 border-t border-slate-700">
+                                        <h4 className="text-sm font-semibold text-amber-400 mb-2">Statistiques Océan {selectedOcean}</h4>
+                                        <div className="text-sm text-slate-300 space-y-1">
+                                            <div>Total villes: {citiesInSelectedOcean.length}</div>
+                                            <div>Alliances: {uniqueAlliances.length}</div>
+                                            <div>Points totaux: {citiesInSelectedOcean.reduce((sum, city) => sum + parseInt(city.points), 0).toLocaleString()}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<GrepolisOceans />, document.getElementById('root'));
+    </script>
+</body>
+</html>
