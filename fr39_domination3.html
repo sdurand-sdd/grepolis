@@ -41,10 +41,7 @@
                 lastUpdate: 'https://sdurand-sdd.github.io/grepolis/last_update.txt' // Nouvelle URL
             };
 
-            /* * ANCIENNE LOGIQUE SUPPRIMÉE : 
-             * La fonction 'getLastModified' n'est plus nécessaire car nous lisons
-             * la date directement depuis last_update.txt.
-            */
+            // Ancienne fonction getLastModified supprimée car non utilisée
 
             // Vérifier si les données sont fraîches (moins de 48h)
             const isDataFresh = () => {
@@ -57,7 +54,7 @@
             // Formatage de la date en français
             const formatDate = (date) => {
                 if (!date) return '';
-                // Utilisation de toLocaleString pour une meilleure gestion de l'affichage
+                // Utilisation de toLocaleString pour inclure l'heure
                 return date.toLocaleString('fr-FR', {
                     day: '2-digit',
                     month: '2-digit',
@@ -67,7 +64,7 @@
                 });
             };
 
-            // Nouvelle fonction pour charger le fichier last_update.txt
+            // Nouvelle fonction pour charger et analyser le fichier last_update.txt
             const loadLastUpdateFile = async () => {
                 setLoadingMessage('Chargement de la date de mise à jour...');
                 try {
@@ -77,12 +74,27 @@
                     }
                     const dateText = await response.text();
                     
-                    // On tente de créer un objet Date à partir du texte
-                    const date = new Date(dateText.trim()); 
+                    let cleanedDateText = dateText.trim();
+                    let date;
                     
+                    // --- CORRECTION DE L'ANALYSE DE DATE (DD/MM/YYYY HH:MM:SS) ---
+                    // Sépare la chaîne par les séparateurs courants
+                    const parts = cleanedDateText.split(/[\/ :]/); 
+                    
+                    // Si nous avons au moins 6 parties (J, M, A, H, M, S)
+                    if (parts.length >= 6) {
+                        // Reconstruit au format ISO YYYY-MM-DD HH:MM:SS (plus fiable)
+                        // parts[0]=Jour, parts[1]=Mois, parts[2]=Année
+                        const isoCandidate = `${parts[2]}-${parts[1]}-${parts[0]}T${parts[3]}:${parts[4]}:${parts[5]}`;
+                        date = new Date(isoCandidate);
+                    } else {
+                        // Tentative d'analyse standard si le format n'est pas DD/MM/YYYY
+                        date = new Date(cleanedDateText);
+                    }
+
                     // Vérifie si la date est valide
                     if (isNaN(date)) {
-                         console.warn("Date invalide dans last_update.txt. Affichage de la date d'aujourd'hui.");
+                         console.warn("Date invalide dans last_update.txt. Affichage de la date d'aujourd'hui. (Format attendu: DD/MM/YYYY HH:MM:SS)");
                          setLastUpdate(new Date());
                     } else {
                          setLastUpdate(date);
@@ -98,10 +110,11 @@
             // Fonction pour charger depuis GitHub
             const loadFromGitHub = async () => {
                 setLoading(true);
-                setFilesLoaded({ alliances: false, players: false, towns: false, update: false }); // Réinitialiser le statut
+                // Ajout de 'update: false' ici pour reset le statut
+                setFilesLoaded({ alliances: false, players: false, towns: false, update: false }); 
                 
                 try {
-                    // --- 1. CHARGEMENT DE LA DATE DE MISE À JOUR (NOUVEL ORDRE) ---
+                    // --- 1. CHARGEMENT DE LA DATE DE MISE À JOUR ---
                     await loadLastUpdateFile();
 
                     // --- 2. CHARGEMENT DES ALLIANCES ---
@@ -176,10 +189,7 @@
                     setTowns(townsData);
                     setFilesLoaded(prev => ({ ...prev, towns: true }));
 
-                    /* * ANCIENNE LOGIQUE SUPPRIMÉE : 
-                     * Suppression de la récupération des dates de modification individuelles 
-                     * puisque nous utilisons last_update.txt.
-                    */
+                    // L'ancienne logique de récupération de date de modification est supprimée ici.
 
                 } catch (error) {
                     alert(`Erreur de chargement: ${error.message}\n\nVérifie les URLs GitHub.`);
@@ -194,7 +204,7 @@
                 loadFromGitHub();
             }, []);
 
-            // Modification de la fonction de chargement manuel pour ne plus impacter la date de MAJ
+            // Modification de la fonction de chargement manuel
             const handleFileUpload = (event, fileType) => {
                 const file = event.target.files[0];
                 if (!file) return;
@@ -272,12 +282,16 @@
                         success = true;
                     }
 
-                    // Ne met pas à jour 'lastUpdate' lors du chargement manuel,
-                    // car 'last_update.txt' reste la source officielle d'information.
+                    // Charger la date de MAJ depuis GitHub après un chargement manuel si possible
                     if (success && !filesLoaded.update) {
-                       // Si les fichiers de données sont chargés, essayons de charger la date depuis GitHub
                        loadLastUpdateFile();
                     }
+                    
+                    // Mise à jour de la date locale si le fichier last_update.txt n'a pas pu être chargé
+                    if (!filesLoaded.update) {
+                        setLastUpdate(new Date());
+                    }
+
 
                     setLoading(false);
                 };
@@ -332,8 +346,11 @@
 
             // CHANGEMENT : Les 4 fichiers doivent être chargés
             const allFilesLoaded = filesLoaded.alliances && filesLoaded.players && filesLoaded.towns && filesLoaded.update;
+            // On vérifie seulement les 3 fichiers de données pour l'affichage initial, la date étant facultative
+            const requiredFilesLoaded = filesLoaded.alliances && filesLoaded.players && filesLoaded.towns;
 
-            if (!allFilesLoaded) {
+
+            if (!requiredFilesLoaded) {
                 return (
                     <div className="w-full min-h-screen bg-slate-900 flex items-center justify-center p-8">
                         <div className="max-w-2xl w-full bg-slate-800 rounded-lg p-8 shadow-xl">
@@ -401,17 +418,18 @@
                                                     className="block w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-amber-500 file:text-white hover:file:bg-amber-600 file:cursor-pointer" />
                                             </label>
                                         </div>
-                                        
-                                        <div className="border-2 border-dashed border-slate-600 rounded-lg p-4 opacity-50 cursor-not-allowed">
-                                            <label className="block">
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <span className="text-white font-medium">Date de mise à jour (Automatique)</span>
-                                                    {filesLoaded.update && <span className="text-green-400">✓</span>}
-                                                </div>
-                                                <input type="file" disabled
-                                                    className="block w-full text-sm text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-slate-500 file:text-white" />
-                                            </label>
+
+                                        <div className="p-4 rounded-lg bg-slate-700 text-slate-300">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="font-medium">4. Date de mise à jour (Automatique)</span>
+                                                {filesLoaded.update && <span className="text-green-400">✓</span>}
+                                                {!filesLoaded.update && <span className="text-amber-400">X</span>}
+                                            </div>
+                                            <p className="text-xs text-slate-400 mt-1">
+                                                La date est chargée depuis GitHub (last_update.txt). Chargement manuel non supporté.
+                                            </p>
                                         </div>
+
                                     </div>
 
                                     <div className="mt-8 p-4 bg-slate-700 rounded-lg">
@@ -419,7 +437,7 @@
                                         <ol className="text-slate-300 text-sm list-decimal pl-4 space-y-1">
                                             <li>Depuis Grepolis, exporter les 3 fichiers (.txt)</li>
                                             <li>Remplacer les 3 fichiers sur GitHub</li>
-                                            <li><span className="font-bold text-amber-300">MODIFIER le fichier last_update.txt</span> avec la date et l'heure actuelle (format lisible, ex: '2025-12-14 23:51:54 CET')</li>
+                                            <li><span className="font-bold text-amber-300">MODIFIER le fichier last_update.txt</span> (Format requis: DD/MM/YYYY HH:MM:SS, ex: 15/12/2025 10:30:00)</li>
                                             <li>Cliquer sur "Recharger depuis GitHub"</li>
                                         </ol>
                                     </div>
@@ -573,7 +591,7 @@
                                                             <>
                                                                 <div className="mb-2">
                                                                     <span className="font-semibold">{alliances[selectedAlliance]?.name}</span>
-                                                                    <span className="text-slate-400"> - Rang #{selectedRank}</span>
+                                                                    <span className="text-slate-400"> - Rang #${selectedRank}</span>
                                                                 </div>
                                                                 {isTop1 ? (
                                                                     <div className="space-y-1 text-sm">
