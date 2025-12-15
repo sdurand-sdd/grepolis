@@ -160,12 +160,12 @@
             const [search, setSearch] = useState('');
             const [playerSearch, setPlayerSearch] = useState(''); 
             const [selectedOcean, setSelectedOcean] = useState('all');
-            const [hoveredCity, setHoveredCity] = useState(null);
-            const [selectedCity, setSelectedCity] = useState(null);
+            const [hoveredCity, setHoveredCity] = useState(null); // Peut être un objet ou un tableau de villes (cluster)
+            const [selectedCity, setSelectedCity] = useState(null); // Peut être un objet ou un tableau de villes (cluster)
             const [distanceMode, setDistanceMode] = useState(false);
             const [citiesForDistance, setCitiesForDistance] = useState([]);
             const [dataError, setDataError] = useState(null);
-            const [colorMode, setColorMode] = useState('alliance'); // 'alliance' ou 'ocean'
+            const [colorMode, setColorMode] = useState('alliance'); 
             
             const mapRef = useRef(null); 
 
@@ -219,7 +219,7 @@
             }, [cities.length, mapBounds]);
 
 
-            // Gestion du zoom (Molette) - Correction de l'avertissement passive listener
+            // Gestion du zoom (Molette) 
             const handleWheel = useCallback((e) => {
                 e.preventDefault(); 
                 const scale = e.deltaY > 0 ? 0.9 : 1.1;
@@ -260,18 +260,15 @@
                 loadData();
             }, []);
             
-            // Logique de changement de mode de couleur basé sur le zoom et le filtre (CORRIGÉE)
+            // Logique de changement de mode de couleur basé sur le filtre joueur
             useEffect(() => {
                 if (loading) return;
-
-                // Le mode "Ocean Color" est activé UNIQUEMENT si un filtre joueur est actif.
-                // Le filtre par océan ou le zoom ne forcent PLUS le mode océan.
                 if (playerSearch.trim() !== '') {
-                    setColorMode('ocean');
+                    setColorMode('ocean'); // Couleur par Océan si on filtre par joueur
                 } else {
-                    setColorMode('alliance');
+                    setColorMode('alliance'); // Couleur par Alliance par défaut
                 }
-            }, [loading, playerSearch]); // transform.scale n'est plus une dépendance
+            }, [loading, playerSearch]); 
 
             
             // Appliquer le zoom après le filtrage
@@ -338,8 +335,11 @@
                 setIsDragging(false);
             }, []);
             
-            const handleCityClick = useCallback((city) => {
+            // MODIFICATION: Gère la sélection d'un cluster (tableau) ou d'une ville (objet)
+            const handleCityClick = useCallback((cityOrCluster) => {
                 if (distanceMode) {
+                    // Pour le mode distance, on ne sélectionne que la première ville du cluster si c'est un tableau
+                    const city = Array.isArray(cityOrCluster) ? cityOrCluster[0] : cityOrCluster;
                     setCitiesForDistance(prev => {
                         if (prev.length === 0) {
                             return [city];
@@ -351,7 +351,18 @@
                         }
                     });
                 } else {
-                    setSelectedCity(prev => (prev && prev.id === city.id ? null : city));
+                    setSelectedCity(prev => {
+                        let isSameSelection = false;
+                        if (prev && cityOrCluster) {
+                            // Comparer par coordonnées pour les clusters (tableaux) ou par ID pour les villes (objets)
+                            if (Array.isArray(prev) && Array.isArray(cityOrCluster)) {
+                                isSameSelection = prev[0].x === cityOrCluster[0].x && prev[0].y === cityOrCluster[0].y;
+                            } else if (!Array.isArray(prev) && !Array.isArray(cityOrCluster)) {
+                                isSameSelection = prev.id === cityOrCluster.id;
+                            }
+                        }
+                        return isSameSelection ? null : cityOrCluster;
+                    });
                 }
             }, [distanceMode]);
 
@@ -445,41 +456,43 @@
             const renderCities = useMemo(() => {
                 return Object.entries(groupedCities).map(([key, citiesAtLocation]) => {
                     const [x, y] = key.split(',').map(Number);
-                    const city = citiesAtLocation[0]; 
                     
                     let cityColor;
                     
                     if (colorMode === 'ocean') {
                         // Couleur par Océan (activé uniquement si filtre joueur)
-                        cityColor = oceanColors[city.ocean] || '#ccc';
+                        cityColor = oceanColors[citiesAtLocation[0].ocean] || '#ccc';
                     } else {
                         // Couleur par Alliance (Logique pour le cluster : Alliance dominante)
-                        if (citiesAtLocation.length > 1) {
-                            // Trouver l'alliance dominante (par nombre de villes à ce point)
-                            const allianceCounts = citiesAtLocation.reduce((acc, c) => {
-                                acc[c.alliance_id] = (acc[c.alliance_id] || 0) + 1;
-                                return acc;
-                            }, {});
-                            
-                            let dominantAllianceId = 0;
-                            let maxCount = 0;
-                            
-                            for (const id in allianceCounts) {
-                                if (allianceCounts[id] > maxCount) {
-                                    maxCount = allianceCounts[id];
-                                    dominantAllianceId = Number(id);
-                                }
+                        const allianceCounts = citiesAtLocation.reduce((acc, c) => {
+                            acc[c.alliance_id] = (acc[c.alliance_id] || 0) + 1;
+                            return acc;
+                        }, {});
+                        
+                        let dominantAllianceId = 0;
+                        let maxCount = 0;
+                        
+                        for (const id in allianceCounts) {
+                            if (allianceCounts[id] > maxCount) {
+                                maxCount = allianceCounts[id];
+                                dominantAllianceId = Number(id);
                             }
-                            cityColor = allianceColors[dominantAllianceId] || '#94a3b8';
-
-                        } else {
-                            // Ville unique
-                            cityColor = allianceColors[city.alliance_id] || '#94a3b8';
                         }
+                        cityColor = allianceColors[dominantAllianceId] || '#94a3b8';
                     }
                     
-                    const isHovered = hoveredCity && hoveredCity.x === x && hoveredCity.y === y;
-                    const isSelected = selectedCity && selectedCity.x === x && selectedCity.y === y;
+                    // Détermine la charge utile pour le survol/clic (objet unique ou tableau)
+                    const payload = citiesAtLocation.length > 1 ? citiesAtLocation : citiesAtLocation[0];
+                    
+                    // Vérifie si le point actuel est l'élément sélectionné/survolé (que ce soit un objet ou le premier élément du tableau)
+                    const isHovered = hoveredCity && (
+                        (Array.isArray(hoveredCity) && hoveredCity[0].x === x && hoveredCity[0].y === y) ||
+                        (!Array.isArray(hoveredCity) && hoveredCity.x === x && hoveredCity.y === y)
+                    );
+                    const isSelected = selectedCity && (
+                        (Array.isArray(selectedCity) && selectedCity[0].x === x && selectedCity[0].y === y) ||
+                        (!Array.isArray(selectedCity) && selectedCity.x === x && selectedCity.y === y)
+                    );
                     const isInDistanceSelection = citiesForDistance.some(c => c.x === x && c.y === y);
 
                     return (
@@ -492,9 +505,9 @@
                                 stroke={isInDistanceSelection ? '#10b981' : (isSelected ? '#fff' : isHovered ? '#fff' : cityColor)} 
                                 strokeWidth={isInDistanceSelection ? 2 : (isSelected ? 1.5 : isHovered ? 1 : 0)}
                                 opacity={isInDistanceSelection ? 1 : (isHovered || isSelected ? 1 : 0.9)}
-                                onMouseEnter={() => setHoveredCity(citiesAtLocation[0])}
+                                onMouseEnter={() => setHoveredCity(payload)}
                                 onMouseLeave={() => setHoveredCity(null)}
-                                onClick={() => handleCityClick(citiesAtLocation[0])}
+                                onClick={() => handleCityClick(payload)}
                                 style={{ cursor: 'pointer' }}
                             />
                             {/* Indicateur de nombre pour les clusters (Taille -40%) */}
@@ -521,7 +534,7 @@
                                         fontWeight="bold" 
                                         style={{ pointerEvents: 'none' }}
                                     >
-                                        {citiesAtLocation[0].name}
+                                        {citiesAtLocation[0].name} {citiesAtLocation.length > 1 ? `(+${citiesAtLocation.length - 1})` : ''}
                                     </text>
                                     <text 
                                         x={x} y={y - 4 - (5 / transform.scale)} 
@@ -539,7 +552,7 @@
                 });
             }, [groupedCities, hoveredCity, selectedCity, citiesForDistance, oceanColors, allianceColors, colorMode, distanceMode, handleCityClick, transform.scale]);
             
-            // Composant de l'en-tête
+            // Composant de l'en-tête (inchangé)
             const renderHeader = () => (
                 <div className="bg-slate-800 p-4 shadow-lg">
                     <h1 className="text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
@@ -632,9 +645,9 @@
             );
 
 
-            // Composant de la Barre Latérale
+            // Composant de la Barre Latérale (MODIFIÉE POUR LES CLUSTERS)
             const renderSidebar = () => {
-                const targetCity = selectedCity || hoveredCity;
+                const targetCityOrCluster = selectedCity || hoveredCity;
 
                 if (loading) {
                     return (
@@ -658,69 +671,126 @@
                         </div>
                     );
                 }
+                
+                // Détermine si la cible est un cluster (tableau de plus d'une ville)
+                const isCluster = Array.isArray(targetCityOrCluster) && targetCityOrCluster.length > 1;
+                
+                // Prend la première ville pour les coordonnées de base/infos générales (même si c'est un cluster)
+                const targetCity = isCluster ? targetCityOrCluster[0] : targetCityOrCluster; 
 
                 return (
                     <div className="w-80 p-4 bg-slate-800 text-slate-300 flex-shrink-0 overflow-y-auto">
                         <h2 className="text-xl font-bold text-white mb-4">Informations</h2>
                         
-                        {targetCity ? (
-                            <div className="space-y-4">
-                                <h3 className="text-lg font-semibold text-amber-400 border-b border-slate-700 pb-2">
-                                    <span className="text-white">Ville Sélectionnée</span>: {targetCity.name}
-                                </h3>
-
-                                {/* Informations de base de la ville */}
-                                <div className="bg-slate-700 p-3 rounded-lg space-y-1">
-                                    <div className="font-semibold text-white">Coordonnées:</div>
-                                    <div className="text-sm">({targetCity.x}, {targetCity.y}) - Océan {targetCity.ocean}</div>
-                                    <div className="text-sm">Points: {targetCity.points.toLocaleString('fr-FR')}</div>
-                                </div>
-                                
-                                {/* Détails du Joueur (Nom du joueur coloré par l'alliance) */}
-                                <div className="bg-slate-700 p-3 rounded-lg space-y-1">
-                                    <div className="font-semibold text-white border-b border-slate-600 pb-1 mb-1">Détails du Joueur</div>
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-amber-300">Nom:</span> 
-                                        <span 
-                                            className="font-bold"
-                                            style={{ color: allianceColors[targetCity.alliance_id] }}
-                                        >
-                                            {targetCity.player_name}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-amber-300">Points Joueur:</span> 
-                                        <span>{targetCity.player_points.toLocaleString('fr-FR')}</span>
-                                    </div>
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-amber-300">Nombre de Villes:</span> 
-                                        <span>{targetCity.player_towns_count}</span>
-                                    </div>
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-amber-300">Points Offensifs:</span> 
-                                        <span>{targetCity.player_off_points.toLocaleString('fr-FR')}</span> 
-                                    </div>
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-amber-300">Points Défensifs:</span> 
-                                        <span>{targetCity.player_def_points.toLocaleString('fr-FR')}</span>
-                                    </div>
-                                </div>
-
-                                {/* Détails de l'Alliance */}
-                                {targetCity.alliance_name && (
+                        {targetCityOrCluster ? (
+                            
+                            // 1. AFFICHAGE DES DÉTAILS DU CLUSTER
+                            isCluster ? (
+                                <div className="space-y-4">
+                                    <h3 className="text-lg font-semibold text-amber-400 border-b border-slate-700 pb-2">
+                                        <span className="text-white">Cluster (Position</span>: {targetCity.x}, {targetCity.y})
+                                    </h3>
+                                    
+                                    {/* CLUSTER SUMMARY */}
                                     <div className="bg-slate-700 p-3 rounded-lg space-y-1">
-                                        <div className="font-semibold text-white border-b border-slate-600 pb-1 mb-1">Détails de l'Alliance</div>
-                                        <div className="flex justify-between text-sm">
-                                            <span className="text-amber-300">Alliance:</span> 
-                                            <span className="font-bold" style={{ color: allianceColors[targetCity.alliance_id] }}>{targetCity.alliance_name}</span>
-                                        </div>
-                                        <div className="flex justify-between text-sm">
-                                            <span className="text-amber-300">Membres:</span> 
-                                            <span>{targetCity.alliance_members}</span>
+                                        <div className="font-semibold text-white">Total Villes dans le Cluster:</div>
+                                        <div className="text-xl font-bold text-amber-300">{targetCityOrCluster.length}</div>
+                                        <div className="text-sm">Océan: {targetCity.ocean}</div>
+                                        <div className="text-sm border-t border-slate-600 pt-1 mt-1">
+                                            Alliance dominante: <span className="font-semibold" style={{ color: allianceColors[targetCity.alliance_id] }}>{targetCity.alliance_name}</span> (Couleur du point)
                                         </div>
                                     </div>
-                                )}
-                            </div>
+                                    
+                                    {/* CLUSTER CITY LIST */}
+                                    <div className="bg-slate-700 p-3 rounded-lg">
+                                        <div className="font-semibold text-white border-b border-slate-600 pb-1 mb-2">Liste des Villes:</div>
+                                        <div className="space-y-1 max-h-60 overflow-y-auto">
+                                            {targetCityOrCluster.map((city, index) => (
+                                                <div key={index} className="text-xs border-b border-slate-600 pb-1 last:border-b-0">
+                                                    <div className="font-bold truncate" title={city.name}>{city.name} ({city.points.toLocaleString('fr-FR')} pts)</div>
+                                                    <div className="flex justify-between items-center text-slate-400">
+                                                        <span 
+                                                            style={{ color: allianceColors[city.alliance_id] }}
+                                                            className="font-semibold truncate mr-2"
+                                                            title={city.player_name}
+                                                        >
+                                                            {city.player_name}
+                                                        </span>
+                                                        <span 
+                                                            style={{ color: allianceColors[city.alliance_id] }}
+                                                            className="text-[10px] truncate"
+                                                            title={city.alliance_name}
+                                                        >
+                                                            [{city.alliance_name}]
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+
+                            ) : (
+
+                                // 2. AFFICHAGE DES DÉTAILS D'UNE VILLE UNIQUE
+                                <div className="space-y-4">
+                                    <h3 className="text-lg font-semibold text-amber-400 border-b border-slate-700 pb-2">
+                                        <span className="text-white">Ville Sélectionnée</span>: {targetCity.name}
+                                    </h3>
+
+                                    {/* Informations de base de la ville */}
+                                    <div className="bg-slate-700 p-3 rounded-lg space-y-1">
+                                        <div className="font-semibold text-white">Coordonnées:</div>
+                                        <div className="text-sm">({targetCity.x}, {targetCity.y}) - Océan {targetCity.ocean}</div>
+                                        <div className="text-sm">Points: {targetCity.points.toLocaleString('fr-FR')}</div>
+                                    </div>
+                                    
+                                    {/* Détails du Joueur (Nom du joueur coloré par l'alliance) */}
+                                    <div className="bg-slate-700 p-3 rounded-lg space-y-1">
+                                        <div className="font-semibold text-white border-b border-slate-600 pb-1 mb-1">Détails du Joueur</div>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-amber-300">Nom:</span> 
+                                            <span 
+                                                className="font-bold"
+                                                style={{ color: allianceColors[targetCity.alliance_id] }}
+                                            >
+                                                {targetCity.player_name}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-amber-300">Points Joueur:</span> 
+                                            <span>{targetCity.player_points.toLocaleString('fr-FR')}</span>
+                                        </div>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-amber-300">Nombre de Villes:</span> 
+                                            <span>{targetCity.player_towns_count}</span>
+                                        </div>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-amber-300">Points Offensifs:</span> 
+                                            <span>{targetCity.player_off_points.toLocaleString('fr-FR')}</span> 
+                                        </div>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-amber-300">Points Défensifs:</span> 
+                                            <span>{targetCity.player_def_points.toLocaleString('fr-FR')}</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Détails de l'Alliance */}
+                                    {targetCity.alliance_name && (
+                                        <div className="bg-slate-700 p-3 rounded-lg space-y-1">
+                                            <div className="font-semibold text-white border-b border-slate-600 pb-1 mb-1">Détails de l'Alliance</div>
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-amber-300">Alliance:</span> 
+                                                <span className="font-bold" style={{ color: allianceColors[targetCity.alliance_id] }}>{targetCity.alliance_name}</span>
+                                            </div>
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-amber-300">Membres:</span> 
+                                                <span>{targetCity.alliance_members}</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )
                         ) : distanceMode && citiesForDistance.length > 0 ? (
                             <div className="p-4 bg-slate-700 rounded-lg shadow-inner">
                                 <h3 className="text-lg font-semibold text-green-400 mb-2">Mode Distance</h3>
@@ -759,7 +829,7 @@
                         )}
 
                         {/* Légende des Couleurs */}
-                        {!targetCity && colorMode === 'alliance' && alliances.length > 0 && (
+                        {(!targetCityOrCluster || (targetCity && colorMode === 'alliance')) && alliances.length > 0 && (
                             <div className="mt-6 p-4 bg-slate-700 rounded-lg">
                                 <h4 className="text-sm font-semibold text-indigo-400 mb-2">Légende des Alliances ({alliances.length})</h4>
                                 <div className="max-h-60 overflow-y-auto space-y-1 text-xs">
