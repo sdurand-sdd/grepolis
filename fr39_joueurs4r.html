@@ -10,7 +10,11 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { margin: 0; padding: 0; overflow: hidden; }
-        .map-container { cursor: grab; }
+        .map-container { 
+            cursor: grab; 
+            /* Empêche le défilement sur Safari mobile */
+            touch-action: none; 
+        }
         .map-container:active { cursor: grabbing; }
         .distance-line { stroke-dasharray: 5,5; animation: dash 1s linear infinite; }
         @keyframes dash { to { stroke-dashoffset: -10; } }
@@ -19,7 +23,7 @@
         .map-wrapper { height: 100%; }
 
         /* Ajustement de la hauteur de la barre latérale sur mobile pour éviter qu'elle ne prenne tout l'écran */
-        @media (max-width: 640px) {
+        @media (max-width: 767px) { /* Utiliser md au lieu de sm pour forcer le col plus tôt */
             .sidebar {
                 max-height: 50vh; /* Limite la hauteur de la sidebar à la moitié de l'écran mobile */
                 width: 100%; /* La sidebar prend toute la largeur sur mobile */
@@ -69,7 +73,7 @@
                 });
                 // S'assurer que le nombre de valeurs correspond aux en-têtes
                 if (Object.keys(obj).length !== headers.length) {
-                    console.warn(`Ligne ignorée : Nombre de valeurs (${values.length}) ne correspond pas au nombre d'en-têtes (${headers.length}).`);
+                    // console.warn(`Ligne ignorée : Nombre de valeurs (${values.length}) ne correspond pas au nombre d'en-têtes (${headers.length}).`);
                     return null;
                 }
                 return obj;
@@ -101,7 +105,7 @@
 
                 const alliancesHeaders = ['id', 'name', 'points', 'towns', 'members'];
                 const playersHeaders = ['id', 'name', 'alliance_id', 'points', 'rank', 'towns', 'off_rank', 'off_points', 'def_rank', 'def_points'];
-                // CORRECTION FINALE : 7 colonnes correspondant à la ligne fournie
+                // 7 colonnes correspondant à la ligne fournie
                 const townsHeaders = ['id', 'player_id', 'name', 'x', 'y', 'island_pos', 'points']; 
 
                 const alliances = parseData(alliancesText, alliancesHeaders);
@@ -377,9 +381,8 @@
                 });
             }, [cities]);
 
-            // Gestion du déplacement (Mouse) 
+            // --- GESTION DU DÉPLACEMENT (SOURIS) ---
             const handleMouseDown = useCallback((e) => {
-                // Ignore le clic droit
                 if (e.button === 2) return;
                 
                 setIsDragging(true);
@@ -399,10 +402,38 @@
                 setIsDragging(false);
             }, []);
             
+            // --- GESTION DU DÉPLACEMENT (TACTILE) ---
+            const handleTouchStart = useCallback((e) => {
+                if (e.touches.length === 1) {
+                    setIsDragging(true);
+                    setDragStart({ x: e.touches[0].clientX - transform.x, y: e.touches[0].clientY - transform.y });
+                    e.preventDefault(); // Empêche le défilement de la page au début du glissement
+                }
+            }, [transform]);
+
+            const handleTouchMove = useCallback((e) => {
+                if (!isDragging || e.touches.length !== 1) return;
+                
+                setTransform(prev => ({
+                    ...prev,
+                    x: e.touches[0].clientX - dragStart.x,
+                    y: e.touches[0].clientY - dragStart.y
+                }));
+                e.preventDefault(); // Empêche le défilement de la page PENDANT le glissement
+            }, [isDragging, dragStart]);
+
+            const handleTouchEnd = useCallback(() => {
+                setIsDragging(false);
+            }, []);
+            
             // Gère la sélection d'un cluster (tableau) ou d'une ville (objet)
-            const handleCityClick = useCallback((cityOrCluster) => {
+            const handleCityClick = useCallback((e, cityOrCluster) => {
+                if (e.type.startsWith('touch')) {
+                    // Pour éviter que le tap ne soit interprété comme un glissement de la fenêtre sur mobile
+                    e.preventDefault(); 
+                }
+                
                 if (distanceMode) {
-                    // Pour le mode distance, on ne sélectionne que la première ville du cluster si c'est un tableau
                     const city = Array.isArray(cityOrCluster) ? cityOrCluster[0] : cityOrCluster;
                     setCitiesForDistance(prev => {
                         if (prev.length === 0) {
@@ -418,7 +449,6 @@
                     setSelectedCity(prev => {
                         let isSameSelection = false;
                         if (prev && cityOrCluster) {
-                            // Comparer par coordonnées pour les clusters (tableaux) ou par ID pour les villes (objets)
                             if (Array.isArray(prev) && Array.isArray(cityOrCluster)) {
                                 isSameSelection = prev[0].x === cityOrCluster[0].x && prev[0].y === cityOrCluster[0].y;
                             } else if (!Array.isArray(prev) && !Array.isArray(cityOrCluster)) {
@@ -571,7 +601,8 @@
                                 opacity={isInDistanceSelection ? 1 : (isHovered || isSelected ? 1 : 0.9)}
                                 onMouseEnter={() => setHoveredCity(payload)}
                                 onMouseLeave={() => setHoveredCity(null)}
-                                onClick={() => handleCityClick(payload)}
+                                onClick={(e) => handleCityClick(e, payload)}
+                                onTouchEnd={(e) => handleCityClick(e, payload)} /* Ajout de l'événement tactile pour le clic */
                                 style={{ cursor: 'pointer' }}
                             />
                             {/* Indicateur de nombre pour les clusters (Taille -40%) */}
@@ -896,8 +927,8 @@
                                     <h4 className="text-sm font-semibold text-amber-400 mb-2">Contrôles</h4>
                                     <div className="text-sm text-slate-300 space-y-1">
                                         <div>🖱️ <strong>Molette (ou pincez)</strong> : Zoom avant/arrière</div>
-                                        <div>🖱️ <strong>Clic + glisser</strong> : Déplacer la carte</div>
-                                        <div>👆 <strong>Clic sur un point</strong> : Sélectionner</div>
+                                        <div>🖱️ <strong>Clic / 👆 Glisser</strong> : Déplacer la carte</div>
+                                        <div>👆 <strong>Tap court</strong> : Sélectionner une ville</div>
                                     </div>
                                 </div>
                             </div>
@@ -934,7 +965,8 @@
                     {renderHeader()}
 
                     {/* Conteneur principal: Carte + Sidebar */}
-                    <div className="flex flex-1 overflow-hidden sm:flex-row flex-col">
+                    {/* CORRECTION FLEX: md:flex-row au lieu de sm:flex-row */}
+                    <div className="flex flex-1 overflow-hidden md:flex-row flex-col">
                         
                         {/* Zone de la carte */}
                         <div className="flex-1 relative overflow-hidden map-wrapper">
@@ -951,6 +983,10 @@
                                 onMouseMove={handleMouseMove}
                                 onMouseUp={handleMouseUp}
                                 onMouseLeave={handleMouseUp}
+                                
+                                onTouchStart={handleTouchStart}  /* AJOUT TACTILE */
+                                onTouchMove={handleTouchMove}    /* AJOUT TACTILE */
+                                onTouchEnd={handleTouchEnd}      /* AJOUT TACTILE */
                             >
                                 <g>
                                     {renderOceanSquares()} 
