@@ -723,4 +723,107 @@
                             </div>
                         ) : distanceMode && citiesForDistance.length > 0 ? (
                             <div className="p-4 bg-slate-700 rounded-lg shadow-inner">
-                                <h3 className="text-lg font-semibold text-green-400 mb-2">Mode Distance
+                                <h3 className="text-lg font-semibold text-green-400 mb-2">Mode Distance</h3>
+                                {citiesForDistance.length === 1 && (
+                                    <p>Ville 1 sélectionnée : <span className="font-bold">{citiesForDistance[0].name}</span>. Cliquez sur une deuxième ville.</p>
+                                )}
+                                {citiesForDistance.length === 2 && (
+                                    <div className="text-center">
+                                        <div className="text-green-200 text-sm">Distance calculée:</div>
+                                        <div className="text-green-100 font-bold text-xl text-center mt-2">
+                                            {calculateDistance(
+                                                citiesForDistance[0].x, 
+                                                citiesForDistance[0].y, 
+                                                citiesForDistance[1].x, 
+                                                citiesForDistance[1].y 
+                                            )} unités
+                                        </div>
+                                    </div>
+                                )}
+                                <button onClick={resetDistanceMode} className="w-full mt-4 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors">
+                                    Quitter le mode Distance
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="p-4 bg-slate-700 rounded-lg shadow-inner">
+                                <p>Survolez ou cliquez sur une ville pour afficher ses informations détaillées (joueur, alliance, points, etc.) ici.</p>
+                                <div className="pt-4 mt-4 border-t border-slate-700">
+                                    <h4 className="text-sm font-semibold text-amber-400 mb-2">Contrôles</h4>
+                                    <div className="text-sm text-slate-300 space-y-1">
+                                        <div>🖱️ <strong>Molette</strong> : Zoom avant/arrière</div>
+                                        <div>🖱️ <strong>Clic + glisser</strong> : Déplacer la carte</div>
+                                        <div>👆 <strong>Clic sur un point</strong> : Sélectionner</div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Légende des Couleurs */}
+                        {!targetCity && colorMode === 'alliance' && alliances.length > 0 && (
+                            <div className="mt-6 p-4 bg-slate-700 rounded-lg">
+                                <h4 className="text-sm font-semibold text-indigo-400 mb-2">Légende des Alliances ({alliances.length})</h4>
+                                <div className="max-h-60 overflow-y-auto space-y-1 text-xs">
+                                    {alliances.sort((a, b) => b.points - a.points).map(alliance => (
+                                        <div key={alliance.id} className="flex items-center justify-between">
+                                            <div className="flex items-center">
+                                                <span 
+                                                    className="w-2 h-2 rounded-full mr-2 flex-shrink-0" 
+                                                    style={{ backgroundColor: allianceColors[alliance.id] || '#ccc' }}
+                                                ></span>
+                                                <span className="truncate">{alliance.name}</span>
+                                            </div>
+                                            <span className="text-slate-400 ml-2 flex-shrink-0">({alliance.members})</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        
+                    </div>
+                );
+            };
+
+            return (
+                <div className="w-full h-screen bg-slate-900 flex flex-col">
+                    {/* En-tête avec contrôles */}
+                    {renderHeader()}
+
+                    <div className="flex flex-1 overflow-hidden">
+                        {/* Zone de la carte */}
+                        <div 
+                            ref={mapRef} 
+                            className="flex-1 map-container relative overflow-hidden" 
+                            onMouseDown={handleMouseDown}
+                            onMouseMove={handleMouseMove}
+                            onMouseUp={handleMouseUp}
+                            onMouseLeave={handleMouseUp} 
+                        >
+                            <svg 
+                                viewBox="0 0 1000 1000" 
+                                preserveAspectRatio="xMidYMid meet"
+                                className="w-full h-full"
+                                style={{
+                                    transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
+                                    transformOrigin: 'top left'
+                                }}
+                            >
+                                <g>
+                                    {renderOceanSquares()} 
+                                    {renderSubGrid()} 
+                                    {renderDistanceLines()} 
+                                    {renderCities}
+                                </g>
+                            </svg>
+                        </div>
+                        
+                        {/* Barre latérale droite */}
+                        {renderSidebar()}
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<GrepolisMap />, document.getElementById('root'));
+    </script>
+</body>
+</html>
