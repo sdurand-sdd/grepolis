@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Carte des Villes Grepolis</title>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react-dom.production.min.js"></script>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -29,9 +29,14 @@
             return Math.sqrt(Math.pow(x1 - x2, 2) + Math.pow(y1 - y2, 2)).toFixed(2);
         };
 
-        // Calcul de l'océan Grepolis (format XXYY)
+        /**
+         * CORRECTION 1: Calcul de l'océan Grepolis (format XXYY)
+         * Utilise Math.floor(coord / 100) pour garantir le format 00 à 99.
+         */
         const getGrepolisOcean = (x, y) => {
-            return (Math.floor(x / 100).toString().padStart(2, '0') + Math.floor(y / 100).toString().padStart(2, '0'));
+            const oceanX = Math.floor(x / 100).toString().padStart(2, '0');
+            const oceanY = Math.floor(y / 100).toString().padStart(2, '0');
+            return oceanX + oceanY;
         };
         
         // Fonction générique pour parser les fichiers TXT (supposés être CSV)
@@ -40,9 +45,7 @@
             if (lines.length === 0) return [];
             
             return lines.map(line => {
-                // Utilisation de la virgule (,) comme délimiteur, ce qui est commun pour les exports. 
-                // Si vos fichiers sont séparés par des tabulations ou des points-virgules, 
-                // vous devrez remplacer `.split(',')` par `.split('\t')` ou `.split(';')`.
+                // Utilisation de la virgule (,) comme délimiteur
                 const values = line.split(','); 
                 const obj = {};
                 headers.forEach((header, i) => {
@@ -79,8 +82,7 @@
                 // En-têtes Grepolis typiques (ajustez si vos fichiers sont différents)
                 const alliancesHeaders = ['id', 'name', 'points', 'towns', 'members'];
                 const playersHeaders = ['id', 'name', 'alliance_id', 'points', 'rank', 'towns', 'off_rank', 'off_points', 'def_rank', 'def_points'];
-                // Attention: 'x' et 'y' sont les coordonnées de la carte (0-999) pour la bonne visualisation.
-                const townsHeaders = ['id', 'player_id', 'name', 'x', 'y', 'points', 'type']; // Simplifié pour le besoin de la carte
+                const townsHeaders = ['id', 'player_id', 'name', 'x', 'y', 'points', 'type']; 
 
                 const alliances = parseData(alliancesText, alliancesHeaders);
                 const players = parseData(playersText, playersHeaders);
@@ -97,11 +99,11 @@
                 // Fusion des données : Création de la liste de villes enrichie
                 const mergedCities = towns.map(town => {
                     const player = playerMap.get(town.player_id);
-                    if (!player) return null; // Ignore les villes sans joueur (e.g. villes barbares)
+                    if (!player || town.points === 0) return null; // Ignore les villes sans joueur ou barbares (points=0)
 
                     return {
                         ...town,
-                        ocean: getGrepolisOcean(town.x, town.y), // Calcul de l'océan
+                        ocean: getGrepolisOcean(town.x, town.y), // Calcul de l'océan corrigé
                         player_name: player.name,
                         player_id: player.id,
                         player_points: player.points,
@@ -109,7 +111,6 @@
                         alliance_id: player.alliance_id,
                         alliance_name: player.alliance_name,
                         alliance_members: player.alliance_members,
-                        // FIX APPLIQUÉ: Ajout des propriétés manquantes
                         player_off_points: player.off_points,
                         player_def_points: player.def_points,
                     };
@@ -119,9 +120,7 @@
 
             } catch (error) {
                 console.error("Erreur lors du chargement des données Grepolis:", error);
-                // Si les fichiers n'existent pas ou sont mal formés, cette alerte s'affichera
-                setError("Erreur de chargement des données. Assurez-vous que les fichiers towns.txt, players.txt et alliances.txt sont présents à la racine.");
-                return [];
+                throw new Error("Erreur de chargement des données. Assurez-vous que les fichiers towns.txt, players.txt et alliances.txt sont présents à la racine.");
             }
         };
 
@@ -135,17 +134,60 @@
             const [isDragging, setIsDragging] = useState(false);
             const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
             const [search, setSearch] = useState('');
-            const [playerSearch, setPlayerSearch] = useState(''); // Nouveau champ de recherche joueur
+            const [playerSearch, setPlayerSearch] = useState(''); 
             const [selectedOcean, setSelectedOcean] = useState('all');
             const [hoveredCity, setHoveredCity] = useState(null);
             const [selectedCity, setSelectedCity] = useState(null);
             const [distanceMode, setDistanceMode] = useState(false);
             const [citiesForDistance, setCitiesForDistance] = useState([]);
-            const [dataError, setDataError] = useState(null); // Changement de nom pour éviter conflit
+            const [dataError, setDataError] = useState(null);
 
-            // DEMANDE 4 & 5 : Affichage par défaut et suppression des états/boutons
-            const viewMode = 'detailed'; // Forcé en "Vue Détaillée"
-            const showSubGrid = true; // Forcé en "Grille Activée"
+            const viewMode = 'detailed'; 
+            const showSubGrid = true; 
+
+
+            // Calcul des limites des villes pour le zoom automatique
+            const mapBounds = useMemo(() => {
+                const targetCities = cities.filter(city => city.player_name.toLowerCase().includes(playerSearch.toLowerCase()) && city.name.toLowerCase().includes(search.toLowerCase()) && (selectedOcean === 'all' || city.ocean === selectedOcean));
+                
+                if (targetCities.length === 0) return { minX: 0, maxX: 1000, minY: 0, maxY: 1000 };
+                
+                const xs = targetCities.map(c => c.x);
+                const ys = targetCities.map(c => c.y);
+                const minX = Math.max(0, Math.min(...xs) - 50);
+                const maxX = Math.min(1000, Math.max(...xs) + 50);
+                const minY = Math.max(0, Math.min(...ys) - 50);
+                const maxY = Math.min(1000, Math.max(...ys) + 50);
+                return { minX, maxX, minY, maxY };
+            }, [cities, search, playerSearch, selectedOcean]); // Dépend de tous les filtres
+
+
+            // Zoom automatique sur les zones occupées
+            const zoomToOccupiedAreas = useCallback((bounds = mapBounds) => {
+                if (cities.length === 0) return;
+                
+                const width = bounds.maxX - bounds.minX;
+                const height = bounds.maxY - bounds.minY;
+
+                // Calculer un nouveau zoom basé sur les limites, en s'assurant qu'il est raisonnable
+                const mapWidth = 800; // Taille arbitraire d'affichage
+                const mapHeight = 600;
+
+                const scaleX = mapWidth / width; 
+                const scaleY = mapHeight / height; 
+                // La mise à l'échelle maximale est de 10 (zoom très proche), minimale de 0.1
+                const scale = Math.min(scaleX, scaleY, 10); 
+
+                const centerX = (bounds.minX + bounds.maxX) / 2;
+                const centerY = (bounds.minY + bounds.maxY) / 2;
+                
+                // Centrer la nouvelle zone dans l'écran de la carte (taille 1000x1000)
+                setTransform({
+                    x: (1000 / 2) - centerX * scale, 
+                    y: (1000 / 2) - centerY * scale, 
+                    scale: scale
+                });
+            }, [cities.length, mapBounds]);
 
 
             // Chargement des données au montage du composant
@@ -154,6 +196,10 @@
                     try {
                         const data = await fetchData();
                         setCities(data);
+                        // Zoom initial après chargement
+                        const initialBounds = { minX: 0, maxX: 1000, minY: 0, maxY: 1000 };
+                        // Le premier zoom se fait sur toute la carte
+                        zoomToOccupiedAreas(initialBounds); 
                     } catch (err) {
                         setDataError(err.message);
                     } finally {
@@ -163,60 +209,34 @@
                 loadData();
             }, []);
             
-            // Calcul des limites des villes pour le zoom automatique
-            const mapBounds = useMemo(() => {
-                if (cities.length === 0) return { minX: 0, maxX: 1000, minY: 0, maxY: 1000 };
-                const xs = cities.map(c => c.x);
-                const ys = cities.map(c => c.y);
-                const minX = Math.max(0, Math.min(...xs) - 50);
-                const maxX = Math.min(1000, Math.max(...xs) + 50);
-                const minY = Math.max(0, Math.min(...ys) - 50);
-                const maxY = Math.min(1000, Math.max(...ys) + 50);
-                return { minX, maxX, minY, maxY };
-            }, [cities]);
-
-            // Zoom automatique sur les zones occupées
-            const zoomToOccupiedAreas = useCallback(() => {
-                if (cities.length === 0) return;
-                const bounds = mapBounds;
-                const width = bounds.maxX - bounds.minX;
-                const height = bounds.maxY - bounds.minY;
-
-                const scaleX = 800 / width; 
-                const scaleY = 600 / height; 
-                const scale = Math.min(scaleX, scaleY, 5); 
-
-                const centerX = (bounds.minX + bounds.maxX) / 2;
-                const centerY = (bounds.minY + bounds.maxY) / 2;
-                setTransform({
-                    x: 400 - centerX * scale,
-                    y: 300 - centerY * scale,
-                    scale: scale
-                });
-            }, [mapBounds, cities.length]);
-
-            // Effet pour zoom automatique au chargement
+            // NOUVEL EFFET: Appliquer le zoom après le filtrage (Correction du clustering)
             useEffect(() => {
-                if (!loading && cities.length > 0) {
-                    zoomToOccupiedAreas();
+                if (!loading && cities.length > 0 && (search || playerSearch || selectedOcean !== 'all')) {
+                    // Si un filtre est actif, nous zoomons sur la zone filtrée
+                    zoomToOccupiedAreas(mapBounds);
+                } else if (!loading && cities.length > 0 && !search && !playerSearch && selectedOcean === 'all') {
+                     // Si aucun filtre n'est actif, nous zoomons sur toutes les villes
+                    const allBounds = mapBounds; 
+                    zoomToOccupiedAreas(allBounds);
                 }
-            }, [loading, cities.length, zoomToOccupiedAreas]); 
+            }, [search, playerSearch, selectedOcean, loading, cities.length, zoomToOccupiedAreas, mapBounds]);
+            
 
-            // Logique de filtrage (DEMANDE 6 & 7: Recherche Ville + Recherche Joueur)
+            // Logique de filtrage (inchangé)
             const filteredCities = useMemo(() => {
                 const lowerCaseSearch = search.toLowerCase();
-                const lowerCasePlayerSearch = playerSearch.toLowerCase(); // Nouveau filtre
+                const lowerCasePlayerSearch = playerSearch.toLowerCase(); 
 
                 return cities.filter(city => {
-                    const matchTown = city.name.toLowerCase().includes(lowerCaseSearch); // Recherche Ville
-                    const matchPlayer = city.player_name.toLowerCase().includes(lowerCasePlayerSearch); // Recherche Joueur
+                    const matchTown = city.name.toLowerCase().includes(lowerCaseSearch); 
+                    const matchPlayer = city.player_name.toLowerCase().includes(lowerCasePlayerSearch); 
 
                     const matchOcean = selectedOcean === 'all' || city.ocean === selectedOcean;
                     return matchTown && matchPlayer && matchOcean;
                 });
             }, [cities, search, playerSearch, selectedOcean]);
 
-            // Groupement des villes par coordonnées
+            // Groupement des villes par coordonnées (inchangé)
             const groupedCities = useMemo(() => {
                 const groups = {};
                 filteredCities.forEach(city => {
@@ -229,7 +249,7 @@
                 return groups;
             }, [filteredCities]);
 
-            // Océans disponibles (pour le filtre)
+            // Océans disponibles (pour le filtre, inchangé)
             const oceans = useMemo(() => {
                 return ['all', ...new Set(cities.map(c => c.ocean))].sort((a, b) => {
                     if (a === 'all') return -1;
@@ -282,8 +302,6 @@
                             if (prev[0].id === city.id) return []; // Deselect
                             return [...prev, city];
                         } else {
-                            // If two are selected, replace the first one with the last selected, then add the new one
-                            // Or simpler: restart the selection
                             return [city];
                         }
                     });
@@ -297,7 +315,7 @@
                 setCitiesForDistance([]);
             }, []);
             
-            // Rendu des carrés d'océan (inchangé, sauf dépendance forcée à 'detailed')
+            // Rendu des carrés d'océan (inchangé, mais utilise la fonction corrigée)
             const renderOceanSquares = useCallback(() => {
                 const oceanSquares = [];
                 for (let x = 0; x < 10; x++) {
@@ -308,7 +326,7 @@
                         const oceanY = y;
                         const isEven = (oceanX % 2 === 0) === (oceanY % 2 === 0); 
                         
-                        if (viewMode === 'detailed' || isOccupied) { // Affichage forcé en 'detailed'
+                        if (viewMode === 'detailed' || isOccupied) { 
                             oceanSquares.push(
                                 <g key={grepolisOceanNum}>
                                     <rect 
@@ -335,19 +353,17 @@
                 return oceanSquares;
             }, [cities]);
             
-            // Rendu de la grille secondaire 5x5 (inchangé, forcé à true)
+            // Rendu de la grille secondaire 5x5 (inchangé)
             const renderSubGrid = useCallback(() => {
-                if (!showSubGrid) return null; // showSubGrid est maintenant toujours true
+                if (!showSubGrid) return null; 
 
                 const subGridLines = [];
-                // Lignes verticales de la grille secondaire
                 for (let x = 0; x <= 1000; x += 20) {
                     subGridLines.push(
                         <line key={`vline-${x}`} x1={x} y1={0} x2={x} y2={1000} 
                             stroke="white" strokeWidth="0.2" opacity="0.2" />
                     );
                 }
-                // Lignes horizontales de la grille secondaire
                 for (let y = 0; y <= 1000; y += 20) {
                     subGridLines.push(
                         <line key={`hline-${y}`} x1={0} y1={y} x2={1000} y2={y} 
@@ -364,11 +380,9 @@
                 const distance = calculateDistance(city1.x, city1.y, city2.x, city2.y);
                 return (
                     <g>
-                        {/* Ligne de distance */}
                         <line x1={city1.x} y1={city1.y} x2={city2.x} y2={city2.y} 
                             stroke="#10b981" strokeWidth="1.5" className="distance-line" />
                         
-                        {/* Étiquette de distance */}
                         <text 
                             x={(city1.x + city2.x) / 2} y={(city1.y + city2.y) / 2} 
                             textAnchor="middle" dy="-0.5em" 
@@ -386,7 +400,7 @@
             const renderCities = useMemo(() => {
                 return Object.entries(groupedCities).map(([key, citiesAtLocation]) => {
                     const [x, y] = key.split(',').map(Number);
-                    const city = citiesAtLocation[0]; // On prend la première ville pour les propriétés
+                    const city = citiesAtLocation[0]; 
                     const oceanColor = oceanColors[city.ocean] || '#ccc';
                     const isHovered = hoveredCity && hoveredCity.x === x && hoveredCity.y === y;
                     const isSelected = selectedCity && selectedCity.x === x && selectedCity.y === y;
@@ -397,7 +411,7 @@
                             {/* Cercle principal de la ville/cluster */}
                             <circle 
                                 cx={x} cy={y} 
-                                r={Math.max(1, 4 / transform.scale)} // Taille du point
+                                r={Math.max(1, 4 / transform.scale)} 
                                 fill={oceanColor} 
                                 stroke={isInDistanceSelection ? '#10b981' : (isSelected ? '#fff' : isHovered ? '#fff' : oceanColor)} 
                                 strokeWidth={isInDistanceSelection ? 2 : (isSelected ? 1.5 : isHovered ? 1 : 0)}
@@ -407,7 +421,7 @@
                                 onClick={() => handleCityClick(citiesAtLocation[0])}
                                 style={{ cursor: 'pointer' }}
                             />
-                            {/* Indicateur de nombre pour les clusters (gardé mais plus discret) */}
+                            {/* Indicateur de nombre pour les clusters */}
                             {citiesAtLocation.length > 1 && (
                                 <text 
                                     x={x} y={y} 
@@ -449,7 +463,7 @@
                 });
             }, [groupedCities, hoveredCity, selectedCity, citiesForDistance, oceanColors, distanceMode, handleCityClick, transform.scale]);
 
-            // Composant de l'en-tête (mise à jour des contrôles)
+            // Composant de l'en-tête (inchangé)
             const renderHeader = () => (
                 <div className="bg-slate-800 p-4 shadow-lg">
                     <h1 className="text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
@@ -460,7 +474,7 @@
                     </h1>
                     
                     <div className="flex flex-wrap items-center gap-3">
-                        {/* DEMANDE 7 : Rechercher une ville (inchangé) */}
+                        {/* Rechercher une ville */}
                         <div className="relative w-full sm:w-auto">
                             <input 
                                 type="text"
@@ -472,7 +486,7 @@
                             <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                         </div>
 
-                        {/* DEMANDE 6 : Rechercher un joueur (Nouveau champ) */}
+                        {/* Rechercher un joueur */}
                         <div className="relative w-full sm:w-auto">
                             <input 
                                 type="text"
@@ -497,15 +511,14 @@
                             ))}
                         </select>
                         
-                        {/* Boutons de contrôle (mis à jour) */}
+                        {/* Boutons de contrôle (inchangé) */}
                         <div className="flex flex-wrap gap-2">
-                            {/* DEMANDE 4 & 5: Suppression des boutons Vue détaillée/Grille activée */}
                             <button onClick={() => setDistanceMode(!distanceMode)} className={`px-3 py-2 rounded-lg transition-colors ${ 
                                 distanceMode ? 'bg-green-500 hover:bg-green-600 text-white' : 'bg-slate-600 hover:bg-slate-500 text-slate-300' 
                             }`}> 
                                 📏 Distance 
                             </button>
-                            <button onClick={zoomToOccupiedAreas} className="px-3 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors" > 
+                            <button onClick={() => zoomToOccupiedAreas(mapBounds)} className="px-3 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors" > 
                                 🔍 Zoom Zones 
                             </button>
                             <button onClick={() => setTransform({ x: 0, y: 0, scale: 1 })} className="px-3 py-2 bg-slate-600 text-slate-300 rounded-lg hover:bg-slate-500 transition-colors" > 
@@ -546,7 +559,7 @@
             );
 
 
-            // Composant de la Barre Latérale (Mise à jour pour les données Joueur/Alliance)
+            // Composant de la Barre Latérale (inchangé)
             const renderSidebar = () => {
                 const targetCity = selectedCity || hoveredCity;
 
@@ -590,7 +603,7 @@
                                     <div className="text-sm">Points: {targetCity.points.toLocaleString('fr-FR')}</div>
                                 </div>
                                 
-                                {/* Détails du Joueur (DEMANDE 8: Conserver informations joueur) */}
+                                {/* Détails du Joueur */}
                                 <div className="bg-slate-700 p-3 rounded-lg space-y-1">
                                     <div className="font-semibold text-white border-b border-slate-600 pb-1 mb-1">Détails du Joueur</div>
                                     <div className="flex justify-between text-sm">
@@ -607,12 +620,10 @@
                                     </div>
                                     <div className="flex justify-between text-sm">
                                         <span className="text-amber-300">Points Offensifs:</span> 
-                                        {/* Maintenant que la donnée est présente dans targetCity, ceci fonctionne */}
                                         <span>{targetCity.player_off_points.toLocaleString('fr-FR')}</span> 
                                     </div>
                                     <div className="flex justify-between text-sm">
                                         <span className="text-amber-300">Points Défensifs:</span> 
-                                        {/* Maintenant que la donnée est présente dans targetCity, ceci fonctionne */}
                                         <span>{targetCity.player_def_points.toLocaleString('fr-FR')}</span>
                                     </div>
                                 </div>
@@ -685,7 +696,7 @@
                             onMouseDown={handleMouseDown}
                             onMouseMove={handleMouseMove}
                             onMouseUp={handleMouseUp}
-                            onMouseLeave={handleMouseUp} // Stop dragging if mouse leaves the area
+                            onMouseLeave={handleMouseUp} 
                         >
                             <svg 
                                 viewBox="0 0 1000 1000" 
