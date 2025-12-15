@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carte des Villes Grepolis</title>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; }
+        .map-container { cursor: grab; }
+        .map-container:active { cursor: grabbing; }
+        .distance-line { stroke-dasharray: 5,5; animation: dash 1s linear infinite; }
+        @keyframes dash { to { stroke-dashoffset: -10; } }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo, useCallback, useEffect } = React;
+
+        // --- Fonctions de base et de parsing (hors composant) ---
+
+        // Calcul de la distance Grepolis entre deux coordonnées (x, y)
+        const calculateDistance = (x1, y1, x2, y2) => {
+            return Math.sqrt(Math.pow(x1 - x2, 2) + Math.pow(y1 - y2, 2)).toFixed(2);
+        };
+
+        /**
+         * FIX 1: Calcul de l'océan Grepolis
+         * Retourne le format 2 chiffres (XY) pour l'affichage (ex: "24" pour Océan 24).
+         */
+        const getGrepolisOcean = (x, y) => {
+            // oceanX et oceanY sont les coordonnées (0-9) du carré d'océan 100x100
+            const oceanX = Math.floor(x / 100).toString(); 
+            const oceanY = Math.floor(y / 100).toString();
+            // Concatène les deux chiffres (ex: "2" + "4" -> "24")
+            return oceanX + oceanY; 
+        };
+        
+        // Fonction générique pour parser les fichiers TXT (supposés être CSV)
+        const parseData = (text, headers) => {
+            const lines = text.trim().split('\n').filter(line => line.trim() !== '' && !line.startsWith('#'));
+            if (lines.length === 0) return [];
+            
+            return lines.map(line => {
+                // Utilisation de la virgule (,) comme délimiteur
+                const values = line.split(','); 
+                const obj = {};
+                headers.forEach((header, i) => {
+                    const value = values[i];
+                    // Tente de convertir en nombre si ce n'est pas un nom
+                    obj[header] = (header.endsWith('_id') || ['id', 'x', 'y', 'points', 'towns', 'members', 'rank', 'off_rank', 'off_points', 'def_rank', 'def_points'].includes(header)) ? (Number(value) || 0) : value;
+                });
+                return obj;
+            }).filter(obj => Object.keys(obj).length === headers.length);
+        };
+
+        // Fonction pour charger et fusionner toutes les données
+        const fetchData = async () => {
+            const BASE_URL = ''; // Fichiers dans le même dossier que l'HTML
+
+            try {
+                const [alliancesRes, playersRes, townsRes] = await Promise.all([
+                    fetch(`${BASE_URL}alliances.txt`),
+                    fetch(`${BASE_URL}players.txt`),
+                    fetch(`${BASE_URL}towns.txt`),
+                ]);
+
+                // Vérification des erreurs de chargement
+                if (!alliancesRes.ok || !playersRes.ok || !townsRes.ok) {
+                    throw new Error("Erreur de chargement d'un des fichiers TXT.");
+                }
+
+                const [alliancesText, playersText, townsText] = await Promise.all([
+                    alliancesRes.text(),
+                    playersRes.text(),
+                    townsRes.text(),
+                ]);
+
+                // En-têtes Grepolis typiques (ajustez si vos fichiers sont différents)
+                const alliancesHeaders = ['id', 'name', 'points', 'towns', 'members'];
+                const playersHeaders = ['id', 'name', 'alliance_id', 'points', 'rank', 'towns', 'off_rank', 'off_points', 'def_rank', 'def_points'];
+                const townsHeaders = ['id', 'player_id', 'name', 'x', 'y', 'points', 'type']; 
+
+                const alliances = parseData(alliancesText, alliancesHeaders);
+                const players = parseData(playersText, playersHeaders);
+                const towns = parseData(townsText, townsHeaders);
+
+                // Mapping pour un accès rapide
+                const allianceMap = new Map(alliances.map(a => [a.id, a]));
+                const playerMap = new Map(players.map(p => [p.id, {
+                    ...p,
+                    alliance_name: allianceMap.get(p.alliance_id)?.name || 'Sans alliance',
+                    alliance_members: allianceMap.get(p.alliance_id)?.members || 0
+                }]));
+
+                // Fusion des données : Création de la liste de villes enrichie
+                const mergedCities = towns.map(town => {
+                    const player = playerMap.get(town.player_id);
+                    if (!player || town.points === 0) return null; // Ignore les villes sans joueur ou barbares (points=0)
+
+                    return {
+                        ...town,
+                        ocean: getGrepolisOcean(town.x, town.y), // Calcul de l'océan corrigé (2 chiffres)
+                        player_name: player.name,
+                        player_id: player.id,
+                        player_points: player.points,
+                        player_towns_count: player.towns,
+                        alliance_id: player.alliance_id,
+                        alliance_name: player.alliance_name,
+                        alliance_members: player.alliance_members,
+                        player_off_points: player.off_points,
+                        player_def_points: player.def_points,
+                    };
+                }).filter(c => c !== null);
+
+                return mergedCities;
+
+            } catch (error) {
+                console.error("Erreur lors du chargement des données Grepolis:", error);
+                throw new Error("Erreur de chargement des données. Assurez-vous que les fichiers towns.txt, players.txt et alliances.txt sont présents à la racine.");
+            }
+        };
+
+
+        // --- Composant Principal de la Carte ---
+
+        const GrepolisMap = () => {
+            const [cities, setCities] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
+            const [isDragging, setIsDragging] = useState(false);
+            const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+            const [search, setSearch] = useState('');
+            const [playerSearch, setPlayerSearch] = useState(''); 
+            const [selectedOcean, setSelectedOcean] = useState('all');
+            const [hoveredCity, setHoveredCity] = useState(null);
+            const [selectedCity, setSelectedCity] = useState(null);
+            const [distanceMode, setDistanceMode] = useState(false);
+            const [citiesForDistance, setCitiesForDistance] = useState([]);
+            const [dataError, setDataError] = useState(null);
+
+            const viewMode = 'detailed'; 
+            const showSubGrid = true; 
+
+
+            // Calcul des limites des villes pour le zoom automatique
+            const mapBounds = useMemo(() => {
+                const targetCities = cities.filter(city => city.player_name.toLowerCase().includes(playerSearch.toLowerCase()) && city.name.toLowerCase().includes(search.toLowerCase()) && (selectedOcean === 'all' || city.ocean === selectedOcean));
+                
+                if (targetCities.length === 0) return { minX: 0, maxX: 1000, minY: 0, maxY: 1000 };
+                
+                const xs = targetCities.map(c => c.x);
+                const ys = targetCities.map(c => c.y);
+                // Ajout d'une marge de 50 pour une meilleure visualisation
+                const minX = Math.max(0, Math.min(...xs) - 50);
+                const maxX = Math.min(1000, Math.max(...xs) + 50);
+                const minY = Math.max(0, Math.min(...ys) - 50);
+                const maxY = Math.min(1000, Math.max(...ys) + 50);
+                return { minX, maxX, minY, maxY };
+            }, [cities, search, playerSearch, selectedOcean]);
+
+
+            /**
+             * FIX 2: Zoom automatique sur les zones occupées (appelé après le filtre)
+             */
+            const zoomToOccupiedAreas = useCallback((bounds = mapBounds) => {
+                if (cities.length === 0) return;
+                
+                const width = bounds.maxX - bounds.minX;
+                const height = bounds.maxY - bounds.minY;
+
+                const mapWidth = 800; // Taille arbitraire d'affichage
+                const mapHeight = 600;
+
+                const scaleX = mapWidth / width; 
+                const scaleY = mapHeight / height; 
+                const scale = Math.min(scaleX, scaleY, 10); // Limiter le zoom max
+
+                const centerX = (bounds.minX + bounds.maxX) / 2;
+                const centerY = (bounds.minY + bounds.maxY) / 2;
+                
+                // Centrer la nouvelle zone dans l'écran de la carte (taille 1000x1000)
+                setTransform({
+                    x: (1000 / 2) - centerX * scale, 
+                    y: (1000 / 2) - centerY * scale, 
+                    scale: scale
+                });
+            }, [cities.length, mapBounds]);
+
+
+            // Chargement des données au montage du composant
+            useEffect(() => {
+                const loadData = async () => {
+                    try {
+                        const data = await fetchData();
+                        setCities(data);
+                        // Zoom initial après chargement sur toute la carte
+                        const initialBounds = { minX: 0, maxX: 1000, minY: 0, maxY: 1000 };
+                        zoomToOccupiedAreas(initialBounds); 
+                    } catch (err) {
+                        setDataError(err.message);
+                    } finally {
+                        setLoading(false);
+                    }
+                };
+                loadData();
+            }, []);
+            
+            // NOUVEL EFFET: Appliquer le zoom après le filtrage (pour désactiver le clustering sur la zone filtrée)
+            useEffect(() => {
+                // S'assurer que le zoom ne se produit qu'après le chargement initial
+                if (!loading && cities.length > 0) {
+                    zoomToOccupiedAreas(mapBounds);
+                }
+            }, [search, playerSearch, selectedOcean, loading, cities.length, zoomToOccupiedAreas, mapBounds]);
+            
+
+            // Logique de filtrage (inchangé)
+            const filteredCities = useMemo(() => {
+                const lowerCaseSearch = search.toLowerCase();
+                const lowerCasePlayerSearch = playerSearch.toLowerCase(); 
+
+                return cities.filter(city => {
+                    const matchTown = city.name.toLowerCase().includes(lowerCaseSearch); 
+                    const matchPlayer = city.player_name.toLowerCase().includes(lowerCasePlayerSearch); 
+
+                    const matchOcean = selectedOcean === 'all' || city.ocean === selectedOcean;
+                    return matchTown && matchPlayer && matchOcean;
+                });
+            }, [cities, search, playerSearch, selectedOcean]);
+
+            // Groupement des villes par coordonnées (inchangé)
+            const groupedCities = useMemo(() => {
+                const groups = {};
+                filteredCities.forEach(city => {
+                    const key = `${city.x},${city.y}`;
+                    if (!groups[key]) {
+                        groups[key] = [];
+                    }
+                    groups[key].push(city);
+                });
+                return groups;
+            }, [filteredCities]);
+
+            // Océans disponibles (pour le filtre, inchangé)
+            const oceans = useMemo(() => {
+                return ['all', ...new Set(cities.map(c => c.ocean))].sort((a, b) => {
+                    if (a === 'all') return -1;
+                    if (b === 'all') return 1;
+                    return parseInt(a) - parseInt(b);
+                });
+            }, [cities]);
+
+            // Couleurs par océan (utilise maintenant les clés 2 chiffres: '24', '13', etc.)
+            const oceanColors = { 
+                '02': '#3b82f6', '05': '#8b5cf6', '06': '#ec4899', '13': '#f59e0b', 
+                '14': '#10b981', '15': '#06b6d4', '16': '#ef4444', '24': '#a855f7', 
+                '25': '#14b8a6', '34': '#f97316' 
+            }; 
+
+            // Gestion du zoom et du déplacement (inchangé)
+            const handleWheel = useCallback((e) => {
+                e.preventDefault();
+                const scale = e.deltaY > 0 ? 0.9 : 1.1;
+                setTransform(prev => ({ 
+                    ...prev, 
+                    scale: Math.max(0.1, Math.min(10, prev.scale * scale)) 
+                }));
+            }, []);
+
+            const handleMouseDown = useCallback((e) => {
+                setIsDragging(true);
+                setDragStart({ x: e.clientX - transform.x, y: e.clientY - transform.y });
+            }, [transform]);
+
+            const handleMouseMove = useCallback((e) => {
+                if (!isDragging) return;
+                setTransform(prev => ({
+                    ...prev,
+                    x: e.clientX - dragStart.x,
+                    y: e.clientY - dragStart.y
+                }));
+            }, [isDragging, dragStart]);
+
+            const handleMouseUp = useCallback(() => {
+                setIsDragging(false);
+            }, []);
+            
+            const handleCityClick = useCallback((city) => {
+                if (distanceMode) {
+                    setCitiesForDistance(prev => {
+                        if (prev.length === 0) {
+                            return [city];
+                        } else if (prev.length === 1) {
+                            if (prev[0].id === city.id) return []; // Deselect
+                            return [...prev, city];
+                        } else {
+                            return [city];
+                        }
+                    });
+                } else {
+                    setSelectedCity(prev => (prev && prev.id === city.id ? null : city));
+                }
+            }, [distanceMode]);
+
+            const resetDistanceMode = useCallback(() => {
+                setDistanceMode(false);
+                setCitiesForDistance([]);
+            }, []);
+            
+            // Rendu des carrés d'océan
+            const renderOceanSquares = useCallback(() => {
+                const oceanSquares = [];
+                for (let x = 0; x < 10; x++) {
+                    for (let y = 0; y < 10; y++) {
+                        // Utilise la fonction corrigée pour obtenir l'ID d'océan à 2 chiffres (ex: "24")
+                        const grepolisOceanNum = getGrepolisOcean(x * 100 + 1, y * 100 + 1); 
+                        const isOccupied = cities.some(city => city.ocean === grepolisOceanNum);
+                        const oceanX = x;
+                        const oceanY = y;
+                        const isEven = (oceanX % 2 === 0) === (oceanY % 2 === 0); 
+                        
+                        if (viewMode === 'detailed' || isOccupied) { 
+                            oceanSquares.push(
+                                <g key={grepolisOceanNum}>
+                                    <rect 
+                                        x={oceanX * 100} y={oceanY * 100} 
+                                        width={100} height={100} 
+                                        fill={isEven ? '#1e3a5f' : '#2d4a6f'} 
+                                        stroke="#0f172a" strokeWidth="0.5" 
+                                        opacity={isOccupied ? 1 : 0.3} 
+                                    />
+                                    <text 
+                                        x={oceanX * 100 + 50} y={oceanY * 100 + 50} 
+                                        textAnchor="middle" dy="0.35em" 
+                                        fill={isOccupied ? '#fbbf24' : '#64748b'} 
+                                        fontSize="12" fontWeight="bold" 
+                                        opacity={isOccupied ? 0.9 : 0.3} 
+                                    >
+                                        {grepolisOceanNum} {/* Affiche "24" */}
+                                    </text>
+                                </g>
+                            );
+                        }
+                    }
+                }
+                return oceanSquares;
+            }, [cities]);
+            
+            // Rendu de la grille secondaire 5x5 (inchangé)
+            const renderSubGrid = useCallback(() => {
+                if (!showSubGrid) return null; 
+
+                const subGridLines = [];
+                for (let x = 0; x <= 1000; x += 20) {
+                    subGridLines.push(
+                        <line key={`vline-${x}`} x1={x} y1={0} x2={x} y2={1000} 
+                            stroke="white" strokeWidth="0.2" opacity="0.2" />
+                    );
+                }
+                for (let y = 0; y <= 1000; y += 20) {
+                    subGridLines.push(
+                        <line key={`hline-${y}`} x1={0} y1={y} x2={1000} y2={y} 
+                            stroke="white" strokeWidth="0.2" opacity="0.2" />
+                    );
+                }
+                return subGridLines;
+            }, []);
+
+            // Rendu des lignes de distance (inchangé)
+            const renderDistanceLines = useCallback(() => {
+                if (citiesForDistance.length < 2) return null;
+                const [city1, city2] = citiesForDistance;
+                const distance = calculateDistance(city1.x, city1.y, city2.x, city2.y);
+                return (
+                    <g>
+                        <line x1={city1.x} y1={city1.y} x2={city2.x} y2={city2.y} 
+                            stroke="#10b981" strokeWidth="1.5" className="distance-line" />
+                        
+                        <text 
+                            x={(city1.x + city2.x) / 2} y={(city1.y + city2.y) / 2} 
+                            textAnchor="middle" dy="-0.5em" 
+                            fill="#10b981" fontSize={Math.max(4, 14 / transform.scale)} 
+                            fontWeight="bold" 
+                            style={{ pointerEvents: 'none', textShadow: '0 0 3px #0f172a' }}
+                        >
+                            {distance}
+                        </text>
+                    </g>
+                );
+            }, [citiesForDistance, transform.scale]);
+
+            // Rendu des villes (corrigé la ligne tronquée du map)
+            const renderCities = useMemo(() => {
+                return Object.entries(groupedCities).map(([key, citiesAtLocation]) => {
+                    const [x, y] = key.split(',').map(Number);
+                    const city = citiesAtLocation[0]; 
+                    // city.ocean est maintenant au format 2 chiffres (ex: "24"), ce qui correspond aux clés de oceanColors
+                    const oceanColor = oceanColors[city.ocean] || '#ccc'; 
+                    const isHovered = hoveredCity && hoveredCity.x === x && hoveredCity.y === y;
+                    const isSelected = selectedCity && selectedCity.x === x && selectedCity.y === y;
+                    const isInDistanceSelection = citiesForDistance.some(c => c.x === x && c.y === y);
+
+                    return (
+                        <g key={key}>
+                            {/* Cercle principal de la ville/cluster */}
+                            <circle 
+                                cx={x} cy={y} 
+                                r={Math.max(1, 4 / transform.scale)} 
+                                fill={oceanColor} 
+                                stroke={isInDistanceSelection ? '#10b981' : (isSelected ? '#fff' : isHovered ? '#fff' : oceanColor)} 
+                                strokeWidth={isInDistanceSelection ? 2 : (isSelected ? 1.5 : isHovered ? 1 : 0)}
+                                opacity={isInDistanceSelection ? 1 : (isHovered || isSelected ? 1 : 0.9)}
+                                onMouseEnter={() => setHoveredCity(citiesAtLocation[0])}
+                                onMouseLeave={() => setHoveredCity(null)}
+                                onClick={() => handleCityClick(citiesAtLocation[0])}
+                                style={{ cursor: 'pointer' }}
+                            />
+                            {/* Indicateur de nombre pour les clusters */}
+                            {citiesAtLocation.length > 1 && (
+                                <text 
+                                    x={x} y={y} 
+                                    textAnchor="middle" dy="0.3em" 
+                                    fill="white" 
+                                    fontSize={Math.max(3, 8 / transform.scale)} 
+                                    fontWeight="bold" 
+                                    style={{ pointerEvents: 'none' }}
+                                >
+                                    {citiesAtLocation.length}
+                                </text>
+                            )}
+                            {/* Tooltip au survol/sélection */}
+                            {(isHovered || isSelected) && !distanceMode && transform.scale > 0.5 && (
+                                <>
+                                    <text 
+                                        x={x} y={y - 8 - (10 / transform.scale)} 
+                                        textAnchor="middle" 
+                                        fill="#fbbf24" 
+                                        fontSize={Math.max(4, 12 / transform.scale)} 
+                                        fontWeight="bold" 
+                                        style={{ pointerEvents: 'none' }}
+                                    >
+                                        {citiesAtLocation[0].name}
+                                    </text>
+                                    <text 
+                                        x={x} y={y - 4 - (5 / transform.scale)} 
+                                        textAnchor="middle" 
+                                        fill="#94a3b8" 
+                                        fontSize={Math.max(3, 10 / transform.scale)} 
+                                        style={{ pointerEvents: 'none' }}
+                                    >
+                                        ({x}, {y}) - {citiesAtLocation[0].player_name}
+                                    </text>
+                                </>
+                            )}
+                        </g>
+                    );
+                });
+            }, [groupedCities, hoveredCity, selectedCity, citiesForDistance, oceanColors, distanceMode, handleCityClick, transform.scale]);
+            
+            // Composant de l'en-tête (inchangé)
+            const renderHeader = () => (
+                <div className="bg-slate-800 p-4 shadow-lg">
+                    <h1 className="text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
+                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.828 0l-4.243-4.243m10.606 0a2 2 0 110-2 2 2 0 010 2zm-10.606 0a2 2 0 110-2 2 2 0 010 2zM6 10h2m4 0h2m4 0h2m-10 0V4h12v6" />
+                        </svg>
+                        Carte des Villes de l'Alliance
+                    </h1>
+                    
+                    <div className="flex flex-wrap items-center gap-3">
+                        {/* Rechercher une ville */}
+                        <div className="relative w-full sm:w-auto">
+                            <input 
+                                type="text"
+                                placeholder="🔍 Rechercher une ville..."
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                className="pl-10 pr-4 py-2 bg-slate-700 text-white rounded-lg w-full sm:w-60 focus:ring-amber-500 focus:border-amber-500"
+                            />
+                            <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                        </div>
+
+                        {/* Rechercher un joueur */}
+                        <div className="relative w-full sm:w-auto">
+                            <input 
+                                type="text"
+                                placeholder="👤 Rechercher un joueur..."
+                                value={playerSearch}
+                                onChange={(e) => setPlayerSearch(e.target.value)}
+                                className="pl-10 pr-4 py-2 bg-slate-700 text-white rounded-lg w-full sm:w-60 focus:ring-amber-500 focus:border-amber-500"
+                            />
+                            <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14c3.486 0 5.122 1.981 5.64 3.551.493 1.52-.39 2.449-1.957 2.449H8.317c-1.567 0-2.45-1.129-1.957-2.449C6.878 15.981 8.514 14 12 14z" /></svg>
+                        </div>
+                        
+                        {/* Filtre Océan (inchangé) */}
+                        <select
+                            value={selectedOcean}
+                            onChange={(e) => setSelectedOcean(e.target.value)}
+                            className="bg-slate-700 text-white py-2 px-3 rounded-lg focus:ring-amber-500 focus:border-amber-500"
+                        >
+                            {oceans.map(ocean => (
+                                <option key={ocean} value={ocean}>
+                                    {ocean === 'all' ? 'Tous les Océans' : `Océan ${ocean}`}
+                                </option>
+                            ))}
+                        </select>
+                        
+                        {/* Boutons de contrôle (inchangé) */}
+                        <div className="flex flex-wrap gap-2">
+                            <button onClick={() => setDistanceMode(!distanceMode)} className={`px-3 py-2 rounded-lg transition-colors ${ 
+                                distanceMode ? 'bg-green-500 hover:bg-green-600 text-white' : 'bg-slate-600 hover:bg-slate-500 text-slate-300' 
+                            }`}> 
+                                📏 Distance 
+                            </button>
+                            <button onClick={() => zoomToOccupiedAreas(mapBounds)} className="px-3 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors" > 
+                                🔍 Zoom Zones 
+                            </button>
+                            <button onClick={() => setTransform({ x: 0, y: 0, scale: 1 })} className="px-3 py-2 bg-slate-600 text-slate-300 rounded-lg hover:bg-slate-500 transition-colors" > 
+                                Reset Zoom 
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="mt-3 text-slate-300 text-sm flex gap-4 flex-wrap">
+                        {loading ? (
+                            <span className="text-amber-400 font-semibold">Chargement des données...</span>
+                        ) : dataError ? (
+                            <span className="text-red-400 font-semibold">Erreur de données: {dataError}</span>
+                        ) : (
+                            <>
+                                <span> 
+                                    <span className="font-semibold text-amber-400">{filteredCities.length}</span> villes affichées 
+                                </span>
+                                <span> 
+                                    <span className="font-semibold text-amber-400">{Object.keys(groupedCities).length}</span> positions uniques 
+                                </span>
+                                <span> 
+                                    <span className="font-semibold text-amber-400">{cities.length}</span> villes totales 
+                                </span>
+                            </>
+                        )}
+                        {distanceMode && (
+                            <span className="text-green-400 font-semibold"> 📏 Mode Distance Activé - Cliquez sur 2 villes </span>
+                        )}
+                        {viewMode === 'detailed' && (
+                            <span className="text-blue-400 font-semibold"> 🌍 Vue Détaillée (Par défaut) </span>
+                        )}
+                        {showSubGrid && (
+                            <span className="text-purple-400 font-semibold"> 📏 Grille 5x5 Activée (Par défaut) </span>
+                        )}
+                    </div>
+                </div>
+            );
+
+
+            // Composant de la Barre Latérale (inchangé)
+            const renderSidebar = () => {
+                const targetCity = selectedCity || hoveredCity;
+
+                if (loading) {
+                    return (
+                        <div className="w-80 p-4 bg-slate-800 text-slate-300 flex-shrink-0 overflow-y-auto">
+                            <div className="text-center py-10">
+                                <p className="text-amber-400">Chargement des données...</p>
+                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-400 mx-auto mt-4"></div>
+                            </div>
+                        </div>
+                    );
+                }
+                
+                if (dataError) {
+                    return (
+                        <div className="w-80 p-4 bg-slate-800 text-slate-300 flex-shrink-0 overflow-y-auto">
+                             <div className="text-center py-10">
+                                <p className="text-red-400 font-bold">Erreur Critique de Données</p>
+                                <p className="text-sm mt-2">{dataError}</p>
+                                <p className="text-xs mt-4">Vérifiez les fichiers TXT et la console pour les détails.</p>
+                            </div>
+                        </div>
+                    );
+                }
+
+                return (
+                    <div className="w-80 p-4 bg-slate-800 text-slate-300 flex-shrink-0 overflow-y-auto">
+                        <h2 className="text-xl font-bold text-white mb-4">Informations</h2>
+                        
+                        {targetCity ? (
+                            <div className="space-y-4">
+                                <h3 className="text-lg font-semibold text-amber-400 border-b border-slate-700 pb-2">
+                                    <span className="text-white">Ville Sélectionnée</span>: {targetCity.name}
+                                </h3>
+
+                                {/* Informations de base de la ville */}
+                                <div className="bg-slate-700 p-3 rounded-lg space-y-1">
+                                    <div className="font-semibold text-white">Coordonnées:</div>
+                                    <div className="text-sm">({targetCity.x}, {targetCity.y}) - Océan {targetCity.ocean}</div>
+                                    <div className="text-sm">Points: {targetCity.points.toLocaleString('fr-FR')}</div>
+                                </div>
+                                
+                                {/* Détails du Joueur */}
+                                <div className="bg-slate-700 p-3 rounded-lg space-y-1">
+                                    <div className="font-semibold text-white border-b border-slate-600 pb-1 mb-1">Détails du Joueur</div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-amber-300">Nom:</span> 
+                                        <span className="font-bold">{targetCity.player_name}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-amber-300">Points Joueur:</span> 
+                                        <span>{targetCity.player_points.toLocaleString('fr-FR')}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-amber-300">Nombre de Villes:</span> 
+                                        <span>{targetCity.player_towns_count}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-amber-300">Points Offensifs:</span> 
+                                        <span>{targetCity.player_off_points.toLocaleString('fr-FR')}</span> 
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-amber-300">Points Défensifs:</span> 
+                                        <span>{targetCity.player_def_points.toLocaleString('fr-FR')}</span>
+                                    </div>
+                                </div>
+
+                                {/* Détails de l'Alliance */}
+                                {targetCity.alliance_name && (
+                                    <div className="bg-slate-700 p-3 rounded-lg space-y-1">
+                                        <div className="font-semibold text-white border-b border-slate-600 pb-1 mb-1">Détails de l'Alliance</div>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-amber-300">Alliance:</span> 
+                                            <span className="font-bold">{targetCity.alliance_name}</span>
+                                        </div>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-amber-300">Membres:</span> 
+                                            <span>{targetCity.alliance_members}</span>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ) : distanceMode && citiesForDistance.length > 0 ? (
+                            <div className="p-4 bg-slate-700 rounded-lg shadow-inner">
+                                <h3 className="text-lg font-semibold text-green-400 mb-2">Mode Distance</h3>
+                                {citiesForDistance.length === 1 && (
+                                    <p>Ville 1 sélectionnée : <span className="font-bold">{citiesForDistance[0].name}</span>. Cliquez sur une deuxième ville.</p>
+                                )}
+                                {citiesForDistance.length === 2 && (
+                                    <div className="text-center">
+                                        <div className="text-green-200 text-sm">Distance calculée:</div>
+                                        <div className="text-green-100 font-bold text-xl text-center mt-2">
+                                            {calculateDistance(
+                                                citiesForDistance[0].x, 
+                                                citiesForDistance[0].y, 
+                                                citiesForDistance[1].x, 
+                                                citiesForDistance[1].y 
+                                            )} unités
+                                        </div>
+                                    </div>
+                                )}
+                                <button onClick={resetDistanceMode} className="w-full mt-4 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors">
+                                    Quitter le mode Distance
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="p-4 bg-slate-700 rounded-lg shadow-inner">
+                                <p>Survolez ou cliquez sur une ville pour afficher ses informations détaillées (joueur, alliance, points, etc.) ici.</p>
+                                <div className="pt-4 mt-4 border-t border-slate-700">
+                                    <h4 className="text-sm font-semibold text-amber-400 mb-2">Contrôles</h4>
+                                    <div className="text-sm text-slate-300 space-y-1">
+                                        <div>🖱️ <strong>Molette</strong> : Zoom avant/arrière</div>
+                                        <div>🖱️ <strong>Clic + glisser</strong> : Déplacer la carte</div>
+                                        <div>👆 <strong>Clic sur un point</strong> : Sélectionner</div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            };
+
+            return (
+                <div className="w-full h-screen bg-slate-900 flex flex-col">
+                    {/* En-tête avec contrôles */}
+                    {renderHeader()}
+
+                    <div className="flex flex-1 overflow-hidden">
+                        {/* Zone de la carte */}
+                        <div 
+                            className="flex-1 map-container relative"
+                            onWheel={handleWheel}
+                            onMouseDown={handleMouseDown}
+                            onMouseMove={handleMouseMove}
+                            onMouseUp={handleMouseUp}
+                            onMouseLeave={handleMouseUp} 
+                        >
+                            <svg 
+                                viewBox="0 0 1000 1000" 
+                                preserveAspectRatio="xMidYMid meet"
+                                className="w-full h-full"
+                                style={{
+                                    transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
+                                    transformOrigin: 'top left'
+                                }}
+                            >
+                                <g>
+                                    {renderOceanSquares()} 
+                                    {renderSubGrid()} 
+                                    {renderDistanceLines()} 
+                                    {renderCities}
+                                </g>
+                            </svg>
+                        </div>
+                        
+                        {/* Barre latérale droite */}
+                        {renderSidebar()}
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<GrepolisMap />, document.getElementById('root'));
+    </script>
+</body>
+</html>
