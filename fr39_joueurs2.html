@@ -26,14 +26,13 @@
 
         // Calcul de la distance Grepolis entre deux coordonnées (x, y)
         const calculateDistance = (x1, y1, x2, y2) => {
-            return Math.sqrt(Math.pow(x1 - x2, 2) + Math.pow(y1 - y2, 2)).toFixed(2);
+            return Math.sqrt(Math.pow(x1 - x1, 2) + Math.pow(y1 - y2, 2)).toFixed(2);
         };
 
         // Retourne le format 2 chiffres (XY) pour l'affichage (ex: "24" pour Océan 24).
         const getGrepolisOcean = (x, y) => {
             const oceanX = Math.floor(x / 100).toString(); 
             const oceanY = Math.floor(y / 100).toString();
-            // Utilise padStart pour s'assurer que l'océan 02 est bien "02"
             return oceanX.padStart(1, '0') + oceanY.padStart(1, '0'); 
         };
         
@@ -123,7 +122,7 @@
         };
 
         /**
-         * FIX 2: Fonction utilitaire pour générer une couleur HSL unique
+         * Fonction utilitaire pour générer une couleur HSL unique
          * pour chacun des 100 océans (00 à 99) de manière déterministe.
          */
         const generateColor = (id) => {
@@ -509,11 +508,96 @@
                             <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                         </div>
 
-                        {/* Rechercher un joueur (Ligne corrigée) */}
+                        {/* Rechercher un joueur (ATTENTION : Cette ligne doit rester en une seule ligne pour éviter l'erreur de chaîne non terminée) */}
                         <div className="relative w-full sm:w-auto">
                             <input 
                                 type="text"
                                 placeholder="👤 Rechercher un joueur..."
                                 value={playerSearch}
                                 onChange={(e) => setPlayerSearch(e.target.value)}
-                                className="pl-10 pr-4 py-2 bg-slate-700 text-white rounded-lg w-full sm:w-60 focus:
+                                className="pl-10 pr-4 py-2 bg-slate-700 text-white rounded-lg w-full sm:w-60 focus:ring-amber-500 focus:border-amber-500"
+                            />
+                            <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14c3.486 0 5.122 1.981 5.64 3.551.493 1.52-.39 2.449-1.957 2.449H8.317c-1.567 0-2.45-1.129-1.957-2.449C6.878 15.981 8.514 14 12 14z" /></svg>
+                        </div>
+                        
+                        {/* Filtre Océan */}
+                        <select
+                            value={selectedOcean}
+                            onChange={(e) => setSelectedOcean(e.target.value)}
+                            className="bg-slate-700 text-white py-2 px-3 rounded-lg focus:ring-amber-500 focus:border-amber-500"
+                        >
+                            {oceans.map(ocean => (
+                                <option key={ocean} value={ocean}>
+                                    {ocean === 'all' ? 'Tous les Océans' : `Océan ${ocean}`}
+                                </option>
+                            ))}
+                        </select>
+                        
+                        {/* Boutons de contrôle */}
+                        <div className="flex flex-wrap gap-2">
+                            <button onClick={() => setDistanceMode(!distanceMode)} className={`px-3 py-2 rounded-lg transition-colors ${ 
+                                distanceMode ? 'bg-green-500 hover:bg-green-600 text-white' : 'bg-slate-600 hover:bg-slate-500 text-slate-300' 
+                            }`}> 
+                                📏 Distance 
+                            </button>
+                            <button onClick={() => zoomToOccupiedAreas(mapBounds)} className="px-3 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors" > 
+                                🔍 Zoom Zones 
+                            </button>
+                            <button onClick={() => setTransform({ x: 0, y: 0, scale: 1 })} className="px-3 py-2 bg-slate-600 text-slate-300 rounded-lg hover:bg-slate-500 transition-colors" > 
+                                Reset Zoom 
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="mt-3 text-slate-300 text-sm flex gap-4 flex-wrap">
+                        {loading ? (
+                            <span className="text-amber-400 font-semibold">Chargement des données...</span>
+                        ) : dataError ? (
+                            <span className="text-red-400 font-semibold">Erreur de données: {dataError}</span>
+                        ) : (
+                            <>
+                                <span> 
+                                    <span className="font-semibold text-amber-400">{filteredCities.length}</span> villes affichées 
+                                </span>
+                                <span> 
+                                    <span className="font-semibold text-amber-400">{Object.keys(groupedCities).length}</span> positions uniques 
+                                </span>
+                                <span> 
+                                    <span className="font-semibold text-amber-400">{cities.length}</span> villes totales 
+                                </span>
+                            </>
+                        )}
+                        {distanceMode && (
+                            <span className="text-green-400 font-semibold"> 📏 Mode Distance Activé - Cliquez sur 2 villes </span>
+                        )}
+                        {viewMode === 'detailed' && (
+                            <span className="text-blue-400 font-semibold"> 🌍 Vue Détaillée (Par défaut) </span>
+                        )}
+                        {showSubGrid && (
+                            <span className="text-purple-400 font-semibold"> 📏 Grille 5x5 Activée (Par défaut) </span>
+                        )}
+                    </div>
+                </div>
+            );
+
+
+            // Composant de la Barre Latérale (inchangé)
+            const renderSidebar = () => {
+                const targetCity = selectedCity || hoveredCity;
+
+                if (loading) {
+                    return (
+                        <div className="w-80 p-4 bg-slate-800 text-slate-300 flex-shrink-0 overflow-y-auto">
+                            <div className="text-center py-10">
+                                <p className="text-amber-400">Chargement des données...</p>
+                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-400 mx-auto mt-4"></div>
+                            </div>
+                        </div>
+                    );
+                }
+                
+                if (dataError) {
+                    return (
+                        <div className="w-80 p-4 bg-slate-800 text-slate-300 flex-shrink-0 overflow-y-auto">
+                             <div className="text-center py-10">
+                                <p className="text-red-400 font-bold
