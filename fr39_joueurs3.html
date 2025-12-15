@@ -109,7 +109,6 @@
                     };
                 }).filter(c => c !== null);
 
-                // Retourne les villes et les alliances (pour la génération des couleurs)
                 return { mergedCities, alliances };
 
             } catch (error) {
@@ -118,7 +117,7 @@
             }
         };
 
-        // Fonction utilitaire pour générer une couleur HSL unique
+        // Fonction utilitaire pour générer une couleur HSL unique pour les océans
         const generateColor = (id) => {
             const num = parseInt(id, 10);
             const hue = (num * 6) % 360; 
@@ -140,13 +139,10 @@
         // Génère les couleurs pour les alliances (basé sur leur ID)
         const generateAllianceColors = (alliances) => {
             const colors = {};
-            // Utilise l'ID de l'alliance comme graine pour une couleur déterministe
             alliances.forEach(alliance => {
-                // Utilise Math.abs(alliance.id * 13) pour garantir une bonne dispersion des couleurs HSL
                 const hueSeed = Math.abs(alliance.id * 13) % 360; 
                 colors[alliance.id] = `hsl(${hueSeed}, 80%, 55%)`; 
             });
-            // Couleur pour les joueurs sans alliance (ID 0 ou null)
             colors[0] = '#94a3b8'; // Gris-bleu pour "Sans Alliance"
             return colors;
         };
@@ -156,7 +152,7 @@
 
         const GrepolisMap = () => {
             const [cities, setCities] = useState([]);
-            const [alliances, setAlliances] = useState([]); // Stocker les alliances pour la couleur
+            const [alliances, setAlliances] = useState([]); 
             const [loading, setLoading] = useState(true);
             const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
             const [isDragging, setIsDragging] = useState(false);
@@ -169,7 +165,6 @@
             const [distanceMode, setDistanceMode] = useState(false);
             const [citiesForDistance, setCitiesForDistance] = useState([]);
             const [dataError, setDataError] = useState(null);
-            // NOUVEAU: Mode de coloration des villes
             const [colorMode, setColorMode] = useState('alliance'); // 'alliance' ou 'ocean'
             
             const mapRef = useRef(null); 
@@ -177,21 +172,11 @@
             const viewMode = 'detailed'; 
             const showSubGrid = true; 
 
-            // Couleurs d'Océan
+            // Couleurs d'Océan (calculées une seule fois)
             const oceanColors = useMemo(generateOceanColors, []);
 
-            // Couleurs d'Alliance
+            // Couleurs d'Alliance (calculées une seule fois)
             const allianceColors = useMemo(() => generateAllianceColors(alliances), [alliances]);
-
-            // Fonction pour obtenir la couleur de la ville selon le mode actuel
-            const getCityColor = useCallback((city) => {
-                if (colorMode === 'ocean') {
-                    return oceanColors[city.ocean] || '#ccc';
-                }
-                // Si 'alliance' ou par défaut
-                return allianceColors[city.alliance_id] || '#94a3b8'; // Fallback: gris pour les IDs inconnus
-            }, [colorMode, oceanColors, allianceColors]);
-
 
             // Calcul des limites des villes pour le zoom automatique
             const mapBounds = useMemo(() => {
@@ -275,16 +260,17 @@
                 loadData();
             }, []);
             
-            // Logique de changement de mode de couleur basé sur le zoom et le filtre
+            // Logique de changement de mode de couleur basé sur le zoom et le filtre (AJUSTÉE)
             useEffect(() => {
                 if (loading) return;
 
-                // Si l'utilisateur a un filtre joueur activé ou que l'on zoome beaucoup
-                if (playerSearch.trim() !== '' || transform.scale > 3) {
-                    // Force la couleur par Océan
+                // Le mode "Ocean Color" est activé UNIQUEMENT si:
+                // 1. Un filtre joueur est actif.
+                // 2. Le zoom est TRES élevé (échelle > 5).
+                // -> Le filtre par océan seul n'active PLUS la couleur par océan.
+                if (playerSearch.trim() !== '' || transform.scale > 5) {
                     setColorMode('ocean');
                 } else {
-                    // Par défaut, utilise la couleur par Alliance
                     setColorMode('alliance');
                 }
             }, [loading, playerSearch, transform.scale]);
@@ -456,13 +442,42 @@
                 );
             }, [citiesForDistance, transform.scale]);
 
-            // Rendu des villes
+            // Rendu des villes (Logique de couleur et taille ajustée)
             const renderCities = useMemo(() => {
                 return Object.entries(groupedCities).map(([key, citiesAtLocation]) => {
                     const [x, y] = key.split(',').map(Number);
                     const city = citiesAtLocation[0]; 
                     
-                    const cityColor = getCityColor(city); // Utilisation de la nouvelle fonction de couleur
+                    let cityColor;
+                    
+                    if (colorMode === 'ocean') {
+                        // Couleur par Océan
+                        cityColor = oceanColors[city.ocean] || '#ccc';
+                    } else {
+                        // Couleur par Alliance (Logique pour le cluster : Alliance dominante)
+                        if (citiesAtLocation.length > 1) {
+                            // Trouver l'alliance dominante (par nombre de villes à ce point)
+                            const allianceCounts = citiesAtLocation.reduce((acc, c) => {
+                                acc[c.alliance_id] = (acc[c.alliance_id] || 0) + 1;
+                                return acc;
+                            }, {});
+                            
+                            let dominantAllianceId = 0;
+                            let maxCount = 0;
+                            
+                            for (const id in allianceCounts) {
+                                if (allianceCounts[id] > maxCount) {
+                                    maxCount = allianceCounts[id];
+                                    dominantAllianceId = Number(id);
+                                }
+                            }
+                            cityColor = allianceColors[dominantAllianceId] || '#94a3b8';
+
+                        } else {
+                            // Ville unique
+                            cityColor = allianceColors[city.alliance_id] || '#94a3b8';
+                        }
+                    }
                     
                     const isHovered = hoveredCity && hoveredCity.x === x && hoveredCity.y === y;
                     const isSelected = selectedCity && selectedCity.x === x && selectedCity.y === y;
@@ -483,13 +498,13 @@
                                 onClick={() => handleCityClick(citiesAtLocation[0])}
                                 style={{ cursor: 'pointer' }}
                             />
-                            {/* Indicateur de nombre pour les clusters */}
+                            {/* Indicateur de nombre pour les clusters (Taille -40%) */}
                             {citiesAtLocation.length > 1 && (
                                 <text 
                                     x={x} y={y} 
                                     textAnchor="middle" dy="0.3em" 
                                     fill="white" 
-                                    fontSize={Math.max(3, 8 / transform.scale)} 
+                                    fontSize={Math.max(2, 4.8 / transform.scale)} 
                                     fontWeight="bold" 
                                     style={{ pointerEvents: 'none' }}
                                 >
@@ -523,7 +538,7 @@
                         </g>
                     );
                 });
-            }, [groupedCities, hoveredCity, selectedCity, citiesForDistance, getCityColor, distanceMode, handleCityClick, transform.scale]);
+            }, [groupedCities, hoveredCity, selectedCity, citiesForDistance, oceanColors, allianceColors, colorMode, distanceMode, handleCityClick, transform.scale]);
             
             // Composant de l'en-tête
             const renderHeader = () => (
@@ -662,12 +677,17 @@
                                     <div className="text-sm">Points: {targetCity.points.toLocaleString('fr-FR')}</div>
                                 </div>
                                 
-                                {/* Détails du Joueur */}
+                                {/* Détails du Joueur (Nom du joueur coloré par l'alliance) */}
                                 <div className="bg-slate-700 p-3 rounded-lg space-y-1">
                                     <div className="font-semibold text-white border-b border-slate-600 pb-1 mb-1">Détails du Joueur</div>
                                     <div className="flex justify-between text-sm">
                                         <span className="text-amber-300">Nom:</span> 
-                                        <span className="font-bold">{targetCity.player_name}</span>
+                                        <span 
+                                            className="font-bold"
+                                            style={{ color: allianceColors[targetCity.alliance_id] }}
+                                        >
+                                            {targetCity.player_name}
+                                        </span>
                                     </div>
                                     <div className="flex justify-between text-sm">
                                         <span className="text-amber-300">Points Joueur:</span> 
