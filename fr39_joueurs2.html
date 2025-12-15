@@ -24,9 +24,9 @@
 
         // --- Fonctions de base et de parsing (hors composant) ---
 
-        // Calcul de la distance Grepolis entre deux coordonnées (x, y)
+        // Calcul de la distance Grepolis entre deux coordonnées (x, y) - CORRIGÉ
         const calculateDistance = (x1, y1, x2, y2) => {
-            return Math.sqrt(Math.pow(x1 - x1, 2) + Math.pow(y1 - y2, 2)).toFixed(2);
+            return Math.sqrt(Math.pow(x1 - x2, 2) + Math.pow(y1 - y2, 2)).toFixed(2);
         };
 
         // Retourne le format 2 chiffres (XY) pour l'affichage (ex: "24" pour Océan 24).
@@ -508,7 +508,7 @@
                             <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                         </div>
 
-                        {/* Rechercher un joueur (ATTENTION : Cette ligne doit rester en une seule ligne pour éviter l'erreur de chaîne non terminée) */}
+                        {/* Rechercher un joueur */}
                         <div className="relative w-full sm:w-auto">
                             <input 
                                 type="text"
@@ -581,7 +581,7 @@
             );
 
 
-            // Composant de la Barre Latérale (inchangé)
+            // Composant de la Barre Latérale
             const renderSidebar = () => {
                 const targetCity = selectedCity || hoveredCity;
 
@@ -600,4 +600,152 @@
                     return (
                         <div className="w-80 p-4 bg-slate-800 text-slate-300 flex-shrink-0 overflow-y-auto">
                              <div className="text-center py-10">
-                                <p className="text-red-400 font-bold
+                                <p className="text-red-400 font-bold">Erreur Critique de Données</p>
+                                <p className="text-sm mt-2">{dataError}</p>
+                                <p className="text-xs mt-4">Vérifiez les fichiers TXT et la console pour les détails.</p>
+                            </div>
+                        </div>
+                    );
+                }
+
+                return (
+                    <div className="w-80 p-4 bg-slate-800 text-slate-300 flex-shrink-0 overflow-y-auto">
+                        <h2 className="text-xl font-bold text-white mb-4">Informations</h2>
+                        
+                        {targetCity ? (
+                            <div className="space-y-4">
+                                <h3 className="text-lg font-semibold text-amber-400 border-b border-slate-700 pb-2">
+                                    <span className="text-white">Ville Sélectionnée</span>: {targetCity.name}
+                                </h3>
+
+                                {/* Informations de base de la ville */}
+                                <div className="bg-slate-700 p-3 rounded-lg space-y-1">
+                                    <div className="font-semibold text-white">Coordonnées:</div>
+                                    <div className="text-sm">({targetCity.x}, {targetCity.y}) - Océan {targetCity.ocean}</div>
+                                    <div className="text-sm">Points: {targetCity.points.toLocaleString('fr-FR')}</div>
+                                </div>
+                                
+                                {/* Détails du Joueur */}
+                                <div className="bg-slate-700 p-3 rounded-lg space-y-1">
+                                    <div className="font-semibold text-white border-b border-slate-600 pb-1 mb-1">Détails du Joueur</div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-amber-300">Nom:</span> 
+                                        <span className="font-bold">{targetCity.player_name}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-amber-300">Points Joueur:</span> 
+                                        <span>{targetCity.player_points.toLocaleString('fr-FR')}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-amber-300">Nombre de Villes:</span> 
+                                        <span>{targetCity.player_towns_count}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-amber-300">Points Offensifs:</span> 
+                                        <span>{targetCity.player_off_points.toLocaleString('fr-FR')}</span> 
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-amber-300">Points Défensifs:</span> 
+                                        <span>{targetCity.player_def_points.toLocaleString('fr-FR')}</span>
+                                    </div>
+                                </div>
+
+                                {/* Détails de l'Alliance */}
+                                {targetCity.alliance_name && (
+                                    <div className="bg-slate-700 p-3 rounded-lg space-y-1">
+                                        <div className="font-semibold text-white border-b border-slate-600 pb-1 mb-1">Détails de l'Alliance</div>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-amber-300">Alliance:</span> 
+                                            <span className="font-bold">{targetCity.alliance_name}</span>
+                                        </div>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-amber-300">Membres:</span> 
+                                            <span>{targetCity.alliance_members}</span>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ) : distanceMode && citiesForDistance.length > 0 ? (
+                            <div className="p-4 bg-slate-700 rounded-lg shadow-inner">
+                                <h3 className="text-lg font-semibold text-green-400 mb-2">Mode Distance</h3>
+                                {citiesForDistance.length === 1 && (
+                                    <p>Ville 1 sélectionnée : <span className="font-bold">{citiesForDistance[0].name}</span>. Cliquez sur une deuxième ville.</p>
+                                )}
+                                {citiesForDistance.length === 2 && (
+                                    <div className="text-center">
+                                        <div className="text-green-200 text-sm">Distance calculée:</div>
+                                        <div className="text-green-100 font-bold text-xl text-center mt-2">
+                                            {calculateDistance(
+                                                citiesForDistance[0].x, 
+                                                citiesForDistance[0].y, 
+                                                citiesForDistance[1].x, 
+                                                citiesForDistance[1].y 
+                                            )} unités
+                                        </div>
+                                    </div>
+                                )}
+                                <button onClick={resetDistanceMode} className="w-full mt-4 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors">
+                                    Quitter le mode Distance
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="p-4 bg-slate-700 rounded-lg shadow-inner">
+                                <p>Survolez ou cliquez sur une ville pour afficher ses informations détaillées (joueur, alliance, points, etc.) ici.</p>
+                                <div className="pt-4 mt-4 border-t border-slate-700">
+                                    <h4 className="text-sm font-semibold text-amber-400 mb-2">Contrôles</h4>
+                                    <div className="text-sm text-slate-300 space-y-1">
+                                        <div>🖱️ <strong>Molette</strong> : Zoom avant/arrière</div>
+                                        <div>🖱️ <strong>Clic + glisser</strong> : Déplacer la carte</div>
+                                        <div>👆 <strong>Clic sur un point</strong> : Sélectionner</div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            };
+
+            return (
+                <div className="w-full h-screen bg-slate-900 flex flex-col">
+                    {/* En-tête avec contrôles */}
+                    {renderHeader()}
+
+                    <div className="flex flex-1 overflow-hidden">
+                        {/* Zone de la carte */}
+                        <div 
+                            ref={mapRef} 
+                            className="flex-1 map-container relative"
+                            onMouseDown={handleMouseDown}
+                            onMouseMove={handleMouseMove}
+                            onMouseUp={handleMouseUp}
+                            onMouseLeave={handleMouseUp} 
+                        >
+                            <svg 
+                                viewBox="0 0 1000 1000" 
+                                preserveAspectRatio="xMidYMid meet"
+                                className="w-full h-full"
+                                style={{
+                                    transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
+                                    transformOrigin: 'top left'
+                                }}
+                            >
+                                <g>
+                                    {renderOceanSquares()} 
+                                    {renderSubGrid()} 
+                                    {renderDistanceLines()} 
+                                    {renderCities}
+                                </g>
+                            </svg>
+                        </div>
+                        
+                        {/* Barre latérale droite */}
+                        {renderSidebar()}
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<GrepolisMap />, document.getElementById('root'));
+    </script>
+</body>
+</html>
