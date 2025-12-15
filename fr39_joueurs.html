@@ -370,4 +370,29 @@
                 return subGridLines;
             }, []);
 
-            // Rendu
+            // Rendu des lignes de distance (inchangé)
+            const renderDistanceLines = useCallback(() => {
+                if (citiesForDistance.length < 2) return null;
+                const [city1, city2] = citiesForDistance;
+                const distance = calculateDistance(city1.x, city1.y, city2.x, city2.y);
+                return (
+                    <g>
+                        <line x1={city1.x} y1={city1.y} x2={city2.x} y2={city2.y} 
+                            stroke="#10b981" strokeWidth="1.5" className="distance-line" />
+                        
+                        <text 
+                            x={(city1.x + city2.x) / 2} y={(city1.y + city2.y) / 2} 
+                            textAnchor="middle" dy="-0.5em" 
+                            fill="#10b981" fontSize={Math.max(4, 14 / transform.scale)} 
+                            fontWeight="bold" 
+                            style={{ pointerEvents: 'none', textShadow: '0 0 3px #0f172a' }}
+                        >
+                            {distance}
+                        </text>
+                    </g>
+                );
+            }, [citiesForDistance, transform.scale]);
+
+            // Rendu des villes 
+            const renderCities = useMemo(() => {
+                return Object.entries(groupedCities).map(([key
