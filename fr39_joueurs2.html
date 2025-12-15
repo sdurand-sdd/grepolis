@@ -20,7 +20,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useMemo, useCallback, useEffect } = React;
+        const { useState, useMemo, useCallback, useEffect, useRef } = React; // <-- AJOUT DE useRef
 
         // --- Fonctions de base et de parsing (hors composant) ---
 
@@ -143,12 +143,15 @@
             const [distanceMode, setDistanceMode] = useState(false);
             const [citiesForDistance, setCitiesForDistance] = useState([]);
             const [dataError, setDataError] = useState(null);
+            
+            // 1. Création de la référence pour la zone de carte
+            const mapRef = useRef(null); 
 
             const viewMode = 'detailed'; 
             const showSubGrid = true; 
 
 
-            // Calcul des limites des villes pour le zoom automatique
+            // Calcul des limites des villes pour le zoom automatique (inchangé)
             const mapBounds = useMemo(() => {
                 const targetCities = cities.filter(city => city.player_name.toLowerCase().includes(playerSearch.toLowerCase()) && city.name.toLowerCase().includes(search.toLowerCase()) && (selectedOcean === 'all' || city.ocean === selectedOcean));
                 
@@ -165,9 +168,7 @@
             }, [cities, search, playerSearch, selectedOcean]);
 
 
-            /**
-             * FIX 2: Zoom automatique sur les zones occupées (appelé après le filtre)
-             */
+            // Zoom automatique sur les zones occupées (inchangé)
             const zoomToOccupiedAreas = useCallback((bounds = mapBounds) => {
                 if (cities.length === 0) return;
                 
@@ -193,7 +194,36 @@
             }, [cities.length, mapBounds]);
 
 
-            // Chargement des données au montage du composant
+            // Gestion du zoom (Molette) - Mise à jour pour `useCallback` (inchangé)
+            const handleWheel = useCallback((e) => {
+                e.preventDefault(); // <-- Ceci est maintenant OK car l'écouteur n'est plus "passif"
+                const scale = e.deltaY > 0 ? 0.9 : 1.1;
+                setTransform(prev => ({ 
+                    ...prev, 
+                    scale: Math.max(0.1, Math.min(10, prev.scale * scale)) 
+                }));
+            }, []);
+            
+            // 2. Utilisation de `useEffect` pour attacher l'écouteur `wheel` non passif
+            useEffect(() => {
+                const mapElement = mapRef.current;
+                if (mapElement) {
+                    // Ajout de l'écouteur d'événement natif avec { passive: false }
+                    mapElement.addEventListener('wheel', handleWheel, { passive: false });
+                    
+                    // Fonction de nettoyage pour retirer l'écouteur lorsque le composant se démonte
+                    return () => {
+                        mapElement.removeEventListener('wheel', handleWheel);
+                    };
+                }
+            }, [handleWheel]); // Dépendance à handleWheel (qui est `useCallback`é)
+
+
+            // Le reste du code React reste inchangé, car le problème se situait
+            // uniquement dans la gestion de l'événement `wheel`.
+
+
+            // Chargement des données au montage du composant (inchangé)
             useEffect(() => {
                 const loadData = async () => {
                     try {
@@ -211,7 +241,7 @@
                 loadData();
             }, []);
             
-            // NOUVEL EFFET: Appliquer le zoom après le filtrage (pour désactiver le clustering sur la zone filtrée)
+            // NOUVEL EFFET: Appliquer le zoom après le filtrage (inchangé)
             useEffect(() => {
                 // S'assurer que le zoom ne se produit qu'après le chargement initial
                 if (!loading && cities.length > 0) {
@@ -256,23 +286,14 @@
                 });
             }, [cities]);
 
-            // Couleurs par océan (utilise maintenant les clés 2 chiffres: '24', '13', etc.)
+            // Couleurs par océan (inchangé)
             const oceanColors = { 
                 '02': '#3b82f6', '05': '#8b5cf6', '06': '#ec4899', '13': '#f59e0b', 
                 '14': '#10b981', '15': '#06b6d4', '16': '#ef4444', '24': '#a855f7', 
                 '25': '#14b8a6', '34': '#f97316' 
             }; 
 
-            // Gestion du zoom et du déplacement (inchangé)
-            const handleWheel = useCallback((e) => {
-                e.preventDefault();
-                const scale = e.deltaY > 0 ? 0.9 : 1.1;
-                setTransform(prev => ({ 
-                    ...prev, 
-                    scale: Math.max(0.1, Math.min(10, prev.scale * scale)) 
-                }));
-            }, []);
-
+            // Gestion du déplacement (Mouse) - inchangé
             const handleMouseDown = useCallback((e) => {
                 setIsDragging(true);
                 setDragStart({ x: e.clientX - transform.x, y: e.clientY - transform.y });
@@ -313,7 +334,7 @@
                 setCitiesForDistance([]);
             }, []);
             
-            // Rendu des carrés d'océan
+            // Rendu des carrés d'océan (inchangé)
             const renderOceanSquares = useCallback(() => {
                 const oceanSquares = [];
                 for (let x = 0; x < 10; x++) {
@@ -342,7 +363,7 @@
                                         fontSize="12" fontWeight="bold" 
                                         opacity={isOccupied ? 0.9 : 0.3} 
                                     >
-                                        {grepolisOceanNum} {/* Affiche "24" */}
+                                        {grepolisOceanNum} 
                                     </text>
                                 </g>
                             );
@@ -395,12 +416,11 @@
                 );
             }, [citiesForDistance, transform.scale]);
 
-            // Rendu des villes (corrigé la ligne tronquée du map)
+            // Rendu des villes (inchangé)
             const renderCities = useMemo(() => {
                 return Object.entries(groupedCities).map(([key, citiesAtLocation]) => {
                     const [x, y] = key.split(',').map(Number);
                     const city = citiesAtLocation[0]; 
-                    // city.ocean est maintenant au format 2 chiffres (ex: "24"), ce qui correspond aux clés de oceanColors
                     const oceanColor = oceanColors[city.ocean] || '#ccc'; 
                     const isHovered = hoveredCity && hoveredCity.x === x && hoveredCity.y === y;
                     const isSelected = selectedCity && selectedCity.x === x && selectedCity.y === y;
@@ -495,235 +515,4 @@
                                 onChange={(e) => setPlayerSearch(e.target.value)}
                                 className="pl-10 pr-4 py-2 bg-slate-700 text-white rounded-lg w-full sm:w-60 focus:ring-amber-500 focus:border-amber-500"
                             />
-                            <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14c3.486 0 5.122 1.981 5.64 3.551.493 1.52-.39 2.449-1.957 2.449H8.317c-1.567 0-2.45-1.129-1.957-2.449C6.878 15.981 8.514 14 12 14z" /></svg>
-                        </div>
-                        
-                        {/* Filtre Océan (inchangé) */}
-                        <select
-                            value={selectedOcean}
-                            onChange={(e) => setSelectedOcean(e.target.value)}
-                            className="bg-slate-700 text-white py-2 px-3 rounded-lg focus:ring-amber-500 focus:border-amber-500"
-                        >
-                            {oceans.map(ocean => (
-                                <option key={ocean} value={ocean}>
-                                    {ocean === 'all' ? 'Tous les Océans' : `Océan ${ocean}`}
-                                </option>
-                            ))}
-                        </select>
-                        
-                        {/* Boutons de contrôle (inchangé) */}
-                        <div className="flex flex-wrap gap-2">
-                            <button onClick={() => setDistanceMode(!distanceMode)} className={`px-3 py-2 rounded-lg transition-colors ${ 
-                                distanceMode ? 'bg-green-500 hover:bg-green-600 text-white' : 'bg-slate-600 hover:bg-slate-500 text-slate-300' 
-                            }`}> 
-                                📏 Distance 
-                            </button>
-                            <button onClick={() => zoomToOccupiedAreas(mapBounds)} className="px-3 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors" > 
-                                🔍 Zoom Zones 
-                            </button>
-                            <button onClick={() => setTransform({ x: 0, y: 0, scale: 1 })} className="px-3 py-2 bg-slate-600 text-slate-300 rounded-lg hover:bg-slate-500 transition-colors" > 
-                                Reset Zoom 
-                            </button>
-                        </div>
-                    </div>
-
-                    <div className="mt-3 text-slate-300 text-sm flex gap-4 flex-wrap">
-                        {loading ? (
-                            <span className="text-amber-400 font-semibold">Chargement des données...</span>
-                        ) : dataError ? (
-                            <span className="text-red-400 font-semibold">Erreur de données: {dataError}</span>
-                        ) : (
-                            <>
-                                <span> 
-                                    <span className="font-semibold text-amber-400">{filteredCities.length}</span> villes affichées 
-                                </span>
-                                <span> 
-                                    <span className="font-semibold text-amber-400">{Object.keys(groupedCities).length}</span> positions uniques 
-                                </span>
-                                <span> 
-                                    <span className="font-semibold text-amber-400">{cities.length}</span> villes totales 
-                                </span>
-                            </>
-                        )}
-                        {distanceMode && (
-                            <span className="text-green-400 font-semibold"> 📏 Mode Distance Activé - Cliquez sur 2 villes </span>
-                        )}
-                        {viewMode === 'detailed' && (
-                            <span className="text-blue-400 font-semibold"> 🌍 Vue Détaillée (Par défaut) </span>
-                        )}
-                        {showSubGrid && (
-                            <span className="text-purple-400 font-semibold"> 📏 Grille 5x5 Activée (Par défaut) </span>
-                        )}
-                    </div>
-                </div>
-            );
-
-
-            // Composant de la Barre Latérale (inchangé)
-            const renderSidebar = () => {
-                const targetCity = selectedCity || hoveredCity;
-
-                if (loading) {
-                    return (
-                        <div className="w-80 p-4 bg-slate-800 text-slate-300 flex-shrink-0 overflow-y-auto">
-                            <div className="text-center py-10">
-                                <p className="text-amber-400">Chargement des données...</p>
-                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-400 mx-auto mt-4"></div>
-                            </div>
-                        </div>
-                    );
-                }
-                
-                if (dataError) {
-                    return (
-                        <div className="w-80 p-4 bg-slate-800 text-slate-300 flex-shrink-0 overflow-y-auto">
-                             <div className="text-center py-10">
-                                <p className="text-red-400 font-bold">Erreur Critique de Données</p>
-                                <p className="text-sm mt-2">{dataError}</p>
-                                <p className="text-xs mt-4">Vérifiez les fichiers TXT et la console pour les détails.</p>
-                            </div>
-                        </div>
-                    );
-                }
-
-                return (
-                    <div className="w-80 p-4 bg-slate-800 text-slate-300 flex-shrink-0 overflow-y-auto">
-                        <h2 className="text-xl font-bold text-white mb-4">Informations</h2>
-                        
-                        {targetCity ? (
-                            <div className="space-y-4">
-                                <h3 className="text-lg font-semibold text-amber-400 border-b border-slate-700 pb-2">
-                                    <span className="text-white">Ville Sélectionnée</span>: {targetCity.name}
-                                </h3>
-
-                                {/* Informations de base de la ville */}
-                                <div className="bg-slate-700 p-3 rounded-lg space-y-1">
-                                    <div className="font-semibold text-white">Coordonnées:</div>
-                                    <div className="text-sm">({targetCity.x}, {targetCity.y}) - Océan {targetCity.ocean}</div>
-                                    <div className="text-sm">Points: {targetCity.points.toLocaleString('fr-FR')}</div>
-                                </div>
-                                
-                                {/* Détails du Joueur */}
-                                <div className="bg-slate-700 p-3 rounded-lg space-y-1">
-                                    <div className="font-semibold text-white border-b border-slate-600 pb-1 mb-1">Détails du Joueur</div>
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-amber-300">Nom:</span> 
-                                        <span className="font-bold">{targetCity.player_name}</span>
-                                    </div>
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-amber-300">Points Joueur:</span> 
-                                        <span>{targetCity.player_points.toLocaleString('fr-FR')}</span>
-                                    </div>
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-amber-300">Nombre de Villes:</span> 
-                                        <span>{targetCity.player_towns_count}</span>
-                                    </div>
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-amber-300">Points Offensifs:</span> 
-                                        <span>{targetCity.player_off_points.toLocaleString('fr-FR')}</span> 
-                                    </div>
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-amber-300">Points Défensifs:</span> 
-                                        <span>{targetCity.player_def_points.toLocaleString('fr-FR')}</span>
-                                    </div>
-                                </div>
-
-                                {/* Détails de l'Alliance */}
-                                {targetCity.alliance_name && (
-                                    <div className="bg-slate-700 p-3 rounded-lg space-y-1">
-                                        <div className="font-semibold text-white border-b border-slate-600 pb-1 mb-1">Détails de l'Alliance</div>
-                                        <div className="flex justify-between text-sm">
-                                            <span className="text-amber-300">Alliance:</span> 
-                                            <span className="font-bold">{targetCity.alliance_name}</span>
-                                        </div>
-                                        <div className="flex justify-between text-sm">
-                                            <span className="text-amber-300">Membres:</span> 
-                                            <span>{targetCity.alliance_members}</span>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        ) : distanceMode && citiesForDistance.length > 0 ? (
-                            <div className="p-4 bg-slate-700 rounded-lg shadow-inner">
-                                <h3 className="text-lg font-semibold text-green-400 mb-2">Mode Distance</h3>
-                                {citiesForDistance.length === 1 && (
-                                    <p>Ville 1 sélectionnée : <span className="font-bold">{citiesForDistance[0].name}</span>. Cliquez sur une deuxième ville.</p>
-                                )}
-                                {citiesForDistance.length === 2 && (
-                                    <div className="text-center">
-                                        <div className="text-green-200 text-sm">Distance calculée:</div>
-                                        <div className="text-green-100 font-bold text-xl text-center mt-2">
-                                            {calculateDistance(
-                                                citiesForDistance[0].x, 
-                                                citiesForDistance[0].y, 
-                                                citiesForDistance[1].x, 
-                                                citiesForDistance[1].y 
-                                            )} unités
-                                        </div>
-                                    </div>
-                                )}
-                                <button onClick={resetDistanceMode} className="w-full mt-4 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors">
-                                    Quitter le mode Distance
-                                </button>
-                            </div>
-                        ) : (
-                            <div className="p-4 bg-slate-700 rounded-lg shadow-inner">
-                                <p>Survolez ou cliquez sur une ville pour afficher ses informations détaillées (joueur, alliance, points, etc.) ici.</p>
-                                <div className="pt-4 mt-4 border-t border-slate-700">
-                                    <h4 className="text-sm font-semibold text-amber-400 mb-2">Contrôles</h4>
-                                    <div className="text-sm text-slate-300 space-y-1">
-                                        <div>🖱️ <strong>Molette</strong> : Zoom avant/arrière</div>
-                                        <div>🖱️ <strong>Clic + glisser</strong> : Déplacer la carte</div>
-                                        <div>👆 <strong>Clic sur un point</strong> : Sélectionner</div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                );
-            };
-
-            return (
-                <div className="w-full h-screen bg-slate-900 flex flex-col">
-                    {/* En-tête avec contrôles */}
-                    {renderHeader()}
-
-                    <div className="flex flex-1 overflow-hidden">
-                        {/* Zone de la carte */}
-                        <div 
-                            className="flex-1 map-container relative"
-                            onWheel={handleWheel}
-                            onMouseDown={handleMouseDown}
-                            onMouseMove={handleMouseMove}
-                            onMouseUp={handleMouseUp}
-                            onMouseLeave={handleMouseUp} 
-                        >
-                            <svg 
-                                viewBox="0 0 1000 1000" 
-                                preserveAspectRatio="xMidYMid meet"
-                                className="w-full h-full"
-                                style={{
-                                    transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
-                                    transformOrigin: 'top left'
-                                }}
-                            >
-                                <g>
-                                    {renderOceanSquares()} 
-                                    {renderSubGrid()} 
-                                    {renderDistanceLines()} 
-                                    {renderCities}
-                                </g>
-                            </svg>
-                        </div>
-                        
-                        {/* Barre latérale droite */}
-                        {renderSidebar()}
-                    </div>
-                </div>
-            );
-        };
-
-        ReactDOM.render(<GrepolisMap />, document.getElementById('root'));
-    </script>
-</body>
-</html>
+                            <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14c3.486 0 5.122 1.981 5.64 3.55
