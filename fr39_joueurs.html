@@ -48,7 +48,7 @@
                 headers.forEach((header, i) => {
                     const value = values[i];
                     // Tente de convertir en nombre si ce n'est pas un nom
-                    obj[header] = (header.endsWith('_id') || ['id', 'x', 'y', 'points', 'towns', 'members', 'rank'].includes(header)) ? (Number(value) || 0) : value;
+                    obj[header] = (header.endsWith('_id') || ['id', 'x', 'y', 'points', 'towns', 'members', 'rank', 'off_rank', 'off_points', 'def_rank', 'def_points'].includes(header)) ? (Number(value) || 0) : value;
                 });
                 return obj;
             }).filter(obj => Object.keys(obj).length === headers.length);
@@ -109,6 +109,9 @@
                         alliance_id: player.alliance_id,
                         alliance_name: player.alliance_name,
                         alliance_members: player.alliance_members,
+                        // FIX APPLIQUÉ: Ajout des propriétés manquantes
+                        player_off_points: player.off_points,
+                        player_def_points: player.def_points,
                     };
                 }).filter(c => c !== null);
 
@@ -116,7 +119,8 @@
 
             } catch (error) {
                 console.error("Erreur lors du chargement des données Grepolis:", error);
-                alert("Erreur de chargement des données. Vérifiez la console pour les détails et les chemins/formats des fichiers txt.");
+                // Si les fichiers n'existent pas ou sont mal formés, cette alerte s'affichera
+                setError("Erreur de chargement des données. Assurez-vous que les fichiers towns.txt, players.txt et alliances.txt sont présents à la racine.");
                 return [];
             }
         };
@@ -137,8 +141,8 @@
             const [selectedCity, setSelectedCity] = useState(null);
             const [distanceMode, setDistanceMode] = useState(false);
             const [citiesForDistance, setCitiesForDistance] = useState([]);
-            const [error, setError] = useState(null);
-            
+            const [dataError, setDataError] = useState(null); // Changement de nom pour éviter conflit
+
             // DEMANDE 4 & 5 : Affichage par défaut et suppression des états/boutons
             const viewMode = 'detailed'; // Forcé en "Vue Détaillée"
             const showSubGrid = true; // Forcé en "Grille Activée"
@@ -151,7 +155,7 @@
                         const data = await fetchData();
                         setCities(data);
                     } catch (err) {
-                        setError(err.message);
+                        setDataError(err.message);
                     } finally {
                         setLoading(false);
                     }
@@ -513,6 +517,8 @@
                     <div className="mt-3 text-slate-300 text-sm flex gap-4 flex-wrap">
                         {loading ? (
                             <span className="text-amber-400 font-semibold">Chargement des données...</span>
+                        ) : dataError ? (
+                            <span className="text-red-400 font-semibold">Erreur de données: {dataError}</span>
                         ) : (
                             <>
                                 <span> 
@@ -554,6 +560,18 @@
                         </div>
                     );
                 }
+                
+                if (dataError) {
+                    return (
+                        <div className="w-80 p-4 bg-slate-800 text-slate-300 flex-shrink-0 overflow-y-auto">
+                             <div className="text-center py-10">
+                                <p className="text-red-400 font-bold">Erreur Critique de Données</p>
+                                <p className="text-sm mt-2">{dataError}</p>
+                                <p className="text-xs mt-4">Vérifiez les fichiers TXT et la console pour les détails.</p>
+                            </div>
+                        </div>
+                    );
+                }
 
                 return (
                     <div className="w-80 p-4 bg-slate-800 text-slate-300 flex-shrink-0 overflow-y-auto">
@@ -589,10 +607,12 @@
                                     </div>
                                     <div className="flex justify-between text-sm">
                                         <span className="text-amber-300">Points Offensifs:</span> 
-                                        <span>{targetCity.player_off_points.toLocaleString('fr-FR')}</span>
+                                        {/* Maintenant que la donnée est présente dans targetCity, ceci fonctionne */}
+                                        <span>{targetCity.player_off_points.toLocaleString('fr-FR')}</span> 
                                     </div>
                                     <div className="flex justify-between text-sm">
                                         <span className="text-amber-300">Points Défensifs:</span> 
+                                        {/* Maintenant que la donnée est présente dans targetCity, ceci fonctionne */}
                                         <span>{targetCity.player_def_points.toLocaleString('fr-FR')}</span>
                                     </div>
                                 </div>
