@@ -20,7 +20,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useMemo, useCallback, useEffect, useRef } = React; // <-- AJOUT DE useRef
+        const { useState, useMemo, useCallback, useEffect, useRef } = React;
 
         // --- Fonctions de base et de parsing (hors composant) ---
 
@@ -29,16 +29,12 @@
             return Math.sqrt(Math.pow(x1 - x2, 2) + Math.pow(y1 - y2, 2)).toFixed(2);
         };
 
-        /**
-         * FIX 1: Calcul de l'océan Grepolis
-         * Retourne le format 2 chiffres (XY) pour l'affichage (ex: "24" pour Océan 24).
-         */
+        // Retourne le format 2 chiffres (XY) pour l'affichage (ex: "24" pour Océan 24).
         const getGrepolisOcean = (x, y) => {
-            // oceanX et oceanY sont les coordonnées (0-9) du carré d'océan 100x100
             const oceanX = Math.floor(x / 100).toString(); 
             const oceanY = Math.floor(y / 100).toString();
-            // Concatène les deux chiffres (ex: "2" + "4" -> "24")
-            return oceanX + oceanY; 
+            // Utilise padStart pour s'assurer que l'océan 02 est bien "02"
+            return oceanX.padStart(1, '0') + oceanY.padStart(1, '0'); 
         };
         
         // Fonction générique pour parser les fichiers TXT (supposés être CSV)
@@ -126,6 +122,19 @@
             }
         };
 
+        /**
+         * FIX 2: Fonction utilitaire pour générer une couleur HSL unique
+         * pour chacun des 100 océans (00 à 99) de manière déterministe.
+         */
+        const generateColor = (id) => {
+            const num = parseInt(id, 10);
+            // Utilise HSL pour une bonne distribution des couleurs
+            const hue = (num * 6) % 360; 
+            const saturation = 70; 
+            const lightness = 60; 
+            return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+        };
+
 
         // --- Composant Principal de la Carte ---
 
@@ -144,14 +153,23 @@
             const [citiesForDistance, setCitiesForDistance] = useState([]);
             const [dataError, setDataError] = useState(null);
             
-            // 1. Création de la référence pour la zone de carte
+            // Référence pour la zone de carte afin d'attacher un écouteur d'événement non passif
             const mapRef = useRef(null); 
 
             const viewMode = 'detailed'; 
             const showSubGrid = true; 
 
+            // Génération de 100 couleurs d'océan uniques
+            const oceanColors = useMemo(() => {
+                const colors = {};
+                for (let i = 0; i < 100; i++) {
+                    const id = i.toString().padStart(2, '0'); // '00', '01', ..., '99'
+                    colors[id] = generateColor(id);
+                }
+                return colors;
+            }, []);
 
-            // Calcul des limites des villes pour le zoom automatique (inchangé)
+            // Calcul des limites des villes pour le zoom automatique
             const mapBounds = useMemo(() => {
                 const targetCities = cities.filter(city => city.player_name.toLowerCase().includes(playerSearch.toLowerCase()) && city.name.toLowerCase().includes(search.toLowerCase()) && (selectedOcean === 'all' || city.ocean === selectedOcean));
                 
@@ -159,7 +177,6 @@
                 
                 const xs = targetCities.map(c => c.x);
                 const ys = targetCities.map(c => c.y);
-                // Ajout d'une marge de 50 pour une meilleure visualisation
                 const minX = Math.max(0, Math.min(...xs) - 50);
                 const maxX = Math.min(1000, Math.max(...xs) + 50);
                 const minY = Math.max(0, Math.min(...ys) - 50);
@@ -168,7 +185,7 @@
             }, [cities, search, playerSearch, selectedOcean]);
 
 
-            // Zoom automatique sur les zones occupées (inchangé)
+            // Zoom automatique sur les zones occupées 
             const zoomToOccupiedAreas = useCallback((bounds = mapBounds) => {
                 if (cities.length === 0) return;
                 
@@ -180,12 +197,11 @@
 
                 const scaleX = mapWidth / width; 
                 const scaleY = mapHeight / height; 
-                const scale = Math.min(scaleX, scaleY, 10); // Limiter le zoom max
+                const scale = Math.min(scaleX, scaleY, 10); 
 
                 const centerX = (bounds.minX + bounds.maxX) / 2;
                 const centerY = (bounds.minY + bounds.maxY) / 2;
                 
-                // Centrer la nouvelle zone dans l'écran de la carte (taille 1000x1000)
                 setTransform({
                     x: (1000 / 2) - centerX * scale, 
                     y: (1000 / 2) - centerY * scale, 
@@ -194,9 +210,9 @@
             }, [cities.length, mapBounds]);
 
 
-            // Gestion du zoom (Molette) - Mise à jour pour `useCallback` (inchangé)
+            // Gestion du zoom (Molette) - Correction de l'avertissement passive listener
             const handleWheel = useCallback((e) => {
-                e.preventDefault(); // <-- Ceci est maintenant OK car l'écouteur n'est plus "passif"
+                e.preventDefault(); 
                 const scale = e.deltaY > 0 ? 0.9 : 1.1;
                 setTransform(prev => ({ 
                     ...prev, 
@@ -204,32 +220,25 @@
                 }));
             }, []);
             
-            // 2. Utilisation de `useEffect` pour attacher l'écouteur `wheel` non passif
+            // Attacher l'écouteur `wheel` non passif
             useEffect(() => {
                 const mapElement = mapRef.current;
                 if (mapElement) {
-                    // Ajout de l'écouteur d'événement natif avec { passive: false }
                     mapElement.addEventListener('wheel', handleWheel, { passive: false });
                     
-                    // Fonction de nettoyage pour retirer l'écouteur lorsque le composant se démonte
                     return () => {
                         mapElement.removeEventListener('wheel', handleWheel);
                     };
                 }
-            }, [handleWheel]); // Dépendance à handleWheel (qui est `useCallback`é)
+            }, [handleWheel]); 
 
 
-            // Le reste du code React reste inchangé, car le problème se situait
-            // uniquement dans la gestion de l'événement `wheel`.
-
-
-            // Chargement des données au montage du composant (inchangé)
+            // Chargement des données au montage du composant
             useEffect(() => {
                 const loadData = async () => {
                     try {
                         const data = await fetchData();
                         setCities(data);
-                        // Zoom initial après chargement sur toute la carte
                         const initialBounds = { minX: 0, maxX: 1000, minY: 0, maxY: 1000 };
                         zoomToOccupiedAreas(initialBounds); 
                     } catch (err) {
@@ -241,16 +250,15 @@
                 loadData();
             }, []);
             
-            // NOUVEL EFFET: Appliquer le zoom après le filtrage (inchangé)
+            // Appliquer le zoom après le filtrage
             useEffect(() => {
-                // S'assurer que le zoom ne se produit qu'après le chargement initial
                 if (!loading && cities.length > 0) {
                     zoomToOccupiedAreas(mapBounds);
                 }
             }, [search, playerSearch, selectedOcean, loading, cities.length, zoomToOccupiedAreas, mapBounds]);
             
 
-            // Logique de filtrage (inchangé)
+            // Logique de filtrage 
             const filteredCities = useMemo(() => {
                 const lowerCaseSearch = search.toLowerCase();
                 const lowerCasePlayerSearch = playerSearch.toLowerCase(); 
@@ -264,7 +272,7 @@
                 });
             }, [cities, search, playerSearch, selectedOcean]);
 
-            // Groupement des villes par coordonnées (inchangé)
+            // Groupement des villes par coordonnées 
             const groupedCities = useMemo(() => {
                 const groups = {};
                 filteredCities.forEach(city => {
@@ -277,23 +285,18 @@
                 return groups;
             }, [filteredCities]);
 
-            // Océans disponibles (pour le filtre, inchangé)
+            // Océans disponibles (pour le filtre)
             const oceans = useMemo(() => {
-                return ['all', ...new Set(cities.map(c => c.ocean))].sort((a, b) => {
+                // Utilise padStart pour s'assurer que l'océan 2 est "02" pour le tri
+                const allOceans = ['all', ...new Set(cities.map(c => c.ocean))];
+                return allOceans.sort((a, b) => {
                     if (a === 'all') return -1;
                     if (b === 'all') return 1;
                     return parseInt(a) - parseInt(b);
                 });
             }, [cities]);
 
-            // Couleurs par océan (inchangé)
-            const oceanColors = { 
-                '02': '#3b82f6', '05': '#8b5cf6', '06': '#ec4899', '13': '#f59e0b', 
-                '14': '#10b981', '15': '#06b6d4', '16': '#ef4444', '24': '#a855f7', 
-                '25': '#14b8a6', '34': '#f97316' 
-            }; 
-
-            // Gestion du déplacement (Mouse) - inchangé
+            // Gestion du déplacement (Mouse) 
             const handleMouseDown = useCallback((e) => {
                 setIsDragging(true);
                 setDragStart({ x: e.clientX - transform.x, y: e.clientY - transform.y });
@@ -334,12 +337,11 @@
                 setCitiesForDistance([]);
             }, []);
             
-            // Rendu des carrés d'océan (inchangé)
+            // Rendu des carrés d'océan
             const renderOceanSquares = useCallback(() => {
                 const oceanSquares = [];
                 for (let x = 0; x < 10; x++) {
                     for (let y = 0; y < 10; y++) {
-                        // Utilise la fonction corrigée pour obtenir l'ID d'océan à 2 chiffres (ex: "24")
                         const grepolisOceanNum = getGrepolisOcean(x * 100 + 1, y * 100 + 1); 
                         const isOccupied = cities.some(city => city.ocean === grepolisOceanNum);
                         const oceanX = x;
@@ -373,7 +375,7 @@
                 return oceanSquares;
             }, [cities]);
             
-            // Rendu de la grille secondaire 5x5 (inchangé)
+            // Rendu de la grille secondaire 5x5
             const renderSubGrid = useCallback(() => {
                 if (!showSubGrid) return null; 
 
@@ -393,7 +395,7 @@
                 return subGridLines;
             }, []);
 
-            // Rendu des lignes de distance (inchangé)
+            // Rendu des lignes de distance
             const renderDistanceLines = useCallback(() => {
                 if (citiesForDistance.length < 2) return null;
                 const [city1, city2] = citiesForDistance;
@@ -416,11 +418,12 @@
                 );
             }, [citiesForDistance, transform.scale]);
 
-            // Rendu des villes (inchangé)
+            // Rendu des villes
             const renderCities = useMemo(() => {
                 return Object.entries(groupedCities).map(([key, citiesAtLocation]) => {
                     const [x, y] = key.split(',').map(Number);
                     const city = citiesAtLocation[0]; 
+                    // city.ocean correspond à une clé dans oceanColors (qui a maintenant 100 couleurs)
                     const oceanColor = oceanColors[city.ocean] || '#ccc'; 
                     const isHovered = hoveredCity && hoveredCity.x === x && hoveredCity.y === y;
                     const isSelected = selectedCity && selectedCity.x === x && selectedCity.y === y;
@@ -483,7 +486,7 @@
                 });
             }, [groupedCities, hoveredCity, selectedCity, citiesForDistance, oceanColors, distanceMode, handleCityClick, transform.scale]);
             
-            // Composant de l'en-tête (inchangé)
+            // Composant de l'en-tête
             const renderHeader = () => (
                 <div className="bg-slate-800 p-4 shadow-lg">
                     <h1 className="text-2xl font-bold text-amber-400 mb-4 flex items-center gap-2">
@@ -506,13 +509,11 @@
                             <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                         </div>
 
-                        {/* Rechercher un joueur */}
+                        {/* Rechercher un joueur (Ligne corrigée) */}
                         <div className="relative w-full sm:w-auto">
                             <input 
                                 type="text"
                                 placeholder="👤 Rechercher un joueur..."
                                 value={playerSearch}
                                 onChange={(e) => setPlayerSearch(e.target.value)}
-                                className="pl-10 pr-4 py-2 bg-slate-700 text-white rounded-lg w-full sm:w-60 focus:ring-amber-500 focus:border-amber-500"
-                            />
-                            <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14c3.486 0 5.122 1.981 5.64 3.55
+                                className="pl-10 pr-4 py-2 bg-slate-700 text-white rounded-lg w-full sm:w-60 focus:
