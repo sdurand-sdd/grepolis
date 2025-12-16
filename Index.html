@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Index - Outils Grepolis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Styles personnalisés pour une transition fluide sur les cartes */
+        .card-link {
+            transition: transform 0.3s ease, box-shadow 0.3s ease, background-color 0.3s ease;
+        }
+        .card-link:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(251, 191, 36, 0.2), 0 4px 6px rgba(251, 191, 36, 0.1);
+            background-color: #1e293b; /* slate-800 */
+        }
+    </style>
+</head>
+
+<body class="bg-slate-900 text-white min-h-screen flex flex-col items-center pt-10 px-4">
+
+    <header class="w-full max-w-4xl mb-12 relative">
+        <h1 class="text-4xl font-extrabold text-center text-amber-400">
+            Portail des Outils Grepolis
+        </h1>
+
+        <div id="last-update-container" class="absolute top-0 right-0 text-sm text-slate-400 bg-slate-800 py-1 px-3 rounded-lg shadow-md transition-opacity duration-500 opacity-0">
+            <span id="last-update-text">Chargement de la date...</span>
+        </div>
+    </header>
+
+    <main class="w-full max-w-4xl">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+            <a href="domination.html" class="card-link block p-6 bg-slate-800 rounded-xl shadow-lg border-t-4 border-amber-500">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-2xl font-semibold text-amber-400">Carte de Domination</h2>
+                    <svg class="w-8 h-8 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.828 0l-4.243-4.243m10.606 0a2 2 0 110-2 2 2 0 010 2zm-10.606 0a2 2 0 110-2 2 2 0 010 2z" />
+                    </svg>
+                </div>
+                <p class="text-slate-400">Visualisation détaillée de la carte du monde, des villes, des alliances et des océans.</p>
+                <span class="mt-4 inline-block text-amber-400 font-medium">Accéder &rarr;</span>
+            </a>
+
+            <a href="mers.html" class="card-link block p-6 bg-slate-800 rounded-xl shadow-lg border-t-4 border-blue-500">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-2xl font-semibold text-blue-400">Statistiques par Mers</h2>
+                    <svg class="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.881a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    </svg>
+                </div>
+                <p class="text-slate-400">Analyse de la densité des villes et de la présence des alliances par océan.</p>
+                <span class="mt-4 inline-block text-blue-400 font-medium">Accéder &rarr;</span>
+            </a>
+
+            <a href="joueurs.html" class="card-link block p-6 bg-slate-800 rounded-xl shadow-lg border-t-4 border-green-500">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-2xl font-semibold text-green-400">Classement & Joueurs</h2>
+                    <svg class="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354c.32 0 .584.264.584.584v.584a.584.584 0 00-.584.584.584.584 0 00-.584-.584V4.938c0-.32.264-.584.584-.584zM12 18.062c.32 0 .584.264.584.584v.584a.584.584 0 00-.584.584.584.584 0 00-.584-.584v-.584c0-.32.264-.584.584-.584zM18.062 12c0 .32.264.584.584.584h.584a.584.584 0 00.584-.584.584.584 0 00-.584-.584h-.584c-.32 0-.584.264-.584.584zM6 12c0 .32.264.584.584.584h.584a.584.584 0 00.584-.584.584.584 0 00-.584-.584H6.584c-.32 0-.584.264-.584.584z" />
+                    </svg>
+                </div>
+                <p class="text-slate-400">Liste et détails des joueurs, triés par points, rang, ou statistiques offensives/défensives.</p>
+                <span class="mt-4 inline-block text-green-400 font-medium">Accéder &rarr;</span>
+            </a>
+            
+        </div>
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const updateContainer = document.getElementById('last-update-container');
+            const updateText = document.getElementById('last-update-text');
+
+            fetch('last_update.txt')
+                .then(response => {
+                    if (!response.ok) {
+                        // Si le fichier n'existe pas, on affiche un message d'erreur
+                        throw new Error('Fichier last_update.txt introuvable ou erreur réseau');
+                    }
+                    return response.text();
+                })
+                .then(data => {
+                    // Supprimer les lignes vides et prendre la première ligne
+                    const lastUpdate = data.trim().split('\n')[0]; 
+                    if (lastUpdate) {
+                        // Formater et afficher
+                        updateText.innerHTML = `Dernière mise à jour : <span class="font-bold text-white">${lastUpdate}</span>`;
+                        updateContainer.style.opacity = '1'; // Afficher le conteneur
+                    } else {
+                        updateText.textContent = "Date de mise à jour indisponible.";
+                        updateContainer.style.opacity = '1'; 
+                    }
+                })
+                .catch(error => {
+                    console.error("Erreur de récupération de la date:", error.message);
+                    updateText.textContent = "Erreur de chargement de la date.";
+                    updateContainer.style.opacity = '1'; 
+                });
+        });
+    </script>
+</body>
+</html>
