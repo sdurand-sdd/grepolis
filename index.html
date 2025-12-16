@@ -20,14 +20,18 @@
 
 <body class="bg-slate-900 text-white min-h-screen flex flex-col items-center pt-10 px-4">
 
-    <header class="w-full max-w-4xl mb-12 relative">
-        <h1 class="text-4xl font-extrabold text-center text-amber-400">
-            Portail des Outils Grepolis
-        </h1>
+    <header class="w-full max-w-4xl mb-12">
+        
+        <div class="flex flex-col sm:flex-row justify-between items-center mb-6 sm:mb-8">
+            <h1 class="text-4xl font-extrabold text-center sm:text-left text-amber-400 mb-4 sm:mb-0">
+                Portail des Outils Grepolis
+            </h1>
 
-        <div id="last-update-container" class="absolute top-0 right-0 text-sm text-slate-400 bg-slate-800 py-1 px-3 rounded-lg shadow-md transition-opacity duration-500 opacity-0">
-            <span id="last-update-text">Chargement de la date...</span>
+            <div id="last-update-container" class="flex-shrink-0 text-sm text-slate-400 bg-slate-800 py-2 px-3 rounded-lg shadow-md transition-opacity duration-500 opacity-0">
+                <span id="last-update-text">Chargement de la date...</span>
+            </div>
         </div>
+
     </header>
 
     <main class="w-full max-w-4xl">
@@ -37,7 +41,7 @@
                 <div class="flex items-center justify-between mb-3">
                     <h2 class="text-2xl font-semibold text-amber-400">Carte de Domination</h2>
                     <svg class="w-8 h-8 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.828 0l-4.243-4.243m10.606 0a2 2 0 110-2 2 2 0 010 2zm-10.606 0a2 2 0 110-2 2 2 0 010 2z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.828 0l-4.243-4.243m10.606 0a2 2 0 110-2 2 2 0 010 2zm-10.606 0a2 2 0 110-2 2 2 0 010 2zM6 10h2m4 0h2m4 0h2m-10 0V4h12v6" />
                     </svg>
                 </div>
                 <p class="text-slate-400">Visualisation détaillée de la carte du monde, des villes, des alliances et des océans.</p>
@@ -77,18 +81,15 @@
             fetch('last_update.txt')
                 .then(response => {
                     if (!response.ok) {
-                        // Si le fichier n'existe pas, on affiche un message d'erreur
                         throw new Error('Fichier last_update.txt introuvable ou erreur réseau');
                     }
                     return response.text();
                 })
                 .then(data => {
-                    // Supprimer les lignes vides et prendre la première ligne
                     const lastUpdate = data.trim().split('\n')[0]; 
                     if (lastUpdate) {
-                        // Formater et afficher
-                        updateText.innerHTML = `Dernière mise à jour : <span class="font-bold text-white">${lastUpdate}</span>`;
-                        updateContainer.style.opacity = '1'; // Afficher le conteneur
+                        updateText.innerHTML = `Mise à jour : <span class="font-bold text-white">${lastUpdate}</span>`;
+                        updateContainer.style.opacity = '1';
                     } else {
                         updateText.textContent = "Date de mise à jour indisponible.";
                         updateContainer.style.opacity = '1'; 
