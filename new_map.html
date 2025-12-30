@@ -2,19 +2,22 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Grepolis - Calibrage de Précision</title>
+    <title>Grepolis - Calibrage Haute Précision</title>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/babel-standalone/7.23.5/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { margin: 0; background-color: #020617; color: white; overflow: hidden; font-family: sans-serif; }
-        .grid-label { font-size: 0.7px; fill: #64748b; pointer-events: none; }
-        .subline { stroke: rgba(255, 255, 255, 0.1); stroke-width: 0.05; }
+        .grid-label { font-size: 0.6px; fill: #94a3b8; pointer-events: none; }
+        .subline { stroke: rgba(255, 255, 255, 0.1); stroke-width: 0.03; }
         .city-marker { fill: #22c55e; stroke: white; stroke-width: 0.1; }
-        .btn-step { background: #334155; padding: 0 5px; border-radius: 3px; font-weight: bold; transition: background 0.2s; }
-        .btn-step:hover { background: #475569; }
-        input[type=number] { background: #1e293b; border: 1px solid #334155; border-radius: 3px; width: 60px; text-align: center; }
+        input[type=number] { 
+            background: #0f172a; border: 1px solid #334155; border-radius: 4px; 
+            width: 80px; text-align: center; color: #fbbf24; font-weight: bold; padding: 4px 0;
+        }
+        input[type=number]:focus { border-color: #fbbf24; outline: none; background: #1e293b; }
+        .key-hint { font-size: 10px; color: #64748b; margin-top: 2px; }
     </style>
 </head>
 <body>
@@ -26,11 +29,11 @@
         const Ocean24Map = () => {
             const [towns, setTowns] = useState([]);
             const [searchTerm, setSearchTerm] = useState("");
-            const [opacity, setOpacity] = useState(1);
+            const [opacity, setOpacity] = useState(0.7);
             
-            // ÉTAT DE CALIBRAGE
+            // ÉTAT DE CALIBRAGE (Valeurs modifiables au clavier)
             const [img, setImg] = useState({ x: 200, y: 400, w: 100, h: 100 });
-            const [viewBox, setViewBox] = useState({ x: 200, y: 400, w: 100, h: 100 });
+            const [viewBox, setViewBox] = useState({ x: 240, y: 440, w: 30, h: 30 }); // Zoomé par défaut pour aider au calibrage
 
             useEffect(() => {
                 const fetchData = async () => {
@@ -65,62 +68,72 @@
                 return towns.filter(t => t.player_name.toLowerCase().includes(searchTerm.toLowerCase()));
             }, [searchTerm, towns]);
 
-            const adjust = (key, delta) => {
-                setImg(prev => ({ ...prev, [key]: parseFloat((prev[key] + delta).toFixed(2)) }));
+            const handleManualChange = (key, val) => {
+                setImg(prev => ({ ...prev, [key]: parseFloat(val) || 0 }));
             };
 
             return (
                 <div className="flex flex-col h-screen select-none">
-                    {/* PANNEAU DE CONTRÔLE AVEC BOUTONS PAS À PAS */}
-                    <div className="bg-slate-900 border-b border-slate-700 p-3 flex flex-wrap gap-4 items-center text-[11px]">
-                        <div className="flex flex-col gap-1">
-                            <span className="text-amber-500 font-bold uppercase text-[9px]">Chercher Joueur</span>
-                            <input type="text" className="bg-slate-800 border border-slate-600 px-2 py-1 rounded w-40" 
-                                   onChange={(e) => setSearchTerm(e.target.value)} placeholder="Nom..." />
+                    {/* PANNEAU DE CONTRÔLE NUMÉRIQUE */}
+                    <div className="bg-slate-900 border-b border-slate-700 p-4 flex flex-wrap gap-6 items-center">
+                        <div className="flex flex-col">
+                            <span className="text-amber-500 font-bold text-[10px] uppercase mb-1">1. Joueur à calibrer</span>
+                            <input type="text" className="bg-slate-800 border border-slate-600 px-3 py-1 rounded w-48 text-sm" 
+                                   onChange={(e) => setSearchTerm(e.target.value)} placeholder="Entrez un pseudo..." />
                         </div>
 
-                        {['x', 'y', 'w', 'h'].map(key => (
-                            <div key={key} className="flex flex-col items-center bg-slate-800 p-2 rounded border border-slate-700">
-                                <span className="uppercase font-bold mb-1 text-slate-400">{key}</span>
-                                <div className="flex items-center gap-1">
-                                    <button className="btn-step" onClick={() => adjust(key, -0.1)}>-</button>
-                                    <input type="number" value={img[key]} step="0.1" 
-                                           onChange={(e) => setImg({...img, [key]: parseFloat(e.target.value)})}/>
-                                    <button className="btn-step" onClick={() => adjust(key, 0.1)}>+</button>
+                        <div className="flex gap-3 border-l border-slate-700 pl-6">
+                            {['x', 'y', 'w', 'h'].map(key => (
+                                <div key={key} className="flex flex-col items-center">
+                                    <span className="uppercase font-bold text-[10px] text-slate-400 mb-1">{key === 'x' ? 'Position X' : key === 'y' ? 'Position Y' : key === 'w' ? 'Largeur (W)' : 'Hauteur (H)'}</span>
+                                    <input 
+                                        type="number" 
+                                        value={img[key]} 
+                                        step="0.01"
+                                        onChange={(e) => handleManualChange(key, e.target.value)}
+                                    />
+                                    <span className="key-hint">±0.1 (↑↓)</span>
                                 </div>
-                            </div>
-                        ))}
-
-                        <div className="flex flex-col gap-1 border-l border-slate-700 pl-4">
-                            <span className="text-slate-400 font-bold uppercase text-[9px]">Opacité fond</span>
-                            <input type="range" min="0" max="1" step="0.1" value={opacity} onChange={(e)=>setOpacity(e.target.value)} className="w-20"/>
+                            ))}
                         </div>
 
-                        <div className="ml-auto bg-amber-900/30 p-2 rounded text-amber-200 border border-amber-700/50">
-                            <strong>Note :</strong> Une fois les villes alignées, copiez ces 4 valeurs !
+                        <div className="flex flex-col items-center border-l border-slate-700 pl-6">
+                            <span className="text-slate-400 font-bold text-[10px] uppercase mb-1">Opacité Fond</span>
+                            <input type="range" min="0" max="1" step="0.05" value={opacity} onChange={(e)=>setOpacity(e.target.value)} className="w-24 mt-2"/>
+                        </div>
+
+                        <div className="ml-auto text-right">
+                            <div className="text-xs text-amber-400 font-mono">X:{img.x} Y:{img.y}</div>
+                            <div className="text-xs text-amber-400 font-mono">W:{img.w} H:{img.h}</div>
+                            <div className="text-[9px] text-slate-500 mt-1 italic">Astuce: Utilisez Shift + Flèches pour régler à 0.01 près</div>
                         </div>
                     </div>
 
                     <div className="flex-1 bg-black relative overflow-hidden cursor-move"
                          onWheel={(e) => {
                              const factor = e.deltaY > 0 ? 1.05 : 0.95;
-                             setViewBox(p => ({ ...p, w: p.w * factor, h: p.h * factor }));
+                             setViewBox(p => ({ ...p, w: Math.max(5, p.w * factor), h: Math.max(5, p.h * factor) }));
                          }}>
                         
                         <svg viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`} className="w-full h-full">
                             <image href="./fond_ocean24.jpg" x={img.x} y={img.y} width={img.w} height={img.h} opacity={opacity} preserveAspectRatio="none" />
                             
-                            {/* Grille de repère (10x10) */}
-                            {[...Array(11)].map((_, i) => (
-                                <React.Fragment key={i}>
-                                    <line x1={200 + i*10} y1={400} x2={200 + i*10} y2={500} className="subline" />
-                                    <line x1={200} y1={400 + i*10} x2={300} y2={400 + i*10} className="subline" />
-                                    <text x={200 + i*10 + 0.5} y={401.5} className="grid-label">{200 + i*10}</text>
-                                </React.Fragment>
+                            {/* Grille de précision */}
+                            {[...Array(101)].map((_, i) => (
+                                i % 10 === 0 && (
+                                    <React.Fragment key={i}>
+                                        <line x1={200 + i} y1={400} x2={200 + i} y2={500} className="subline" />
+                                        <line x1={200} y1={400 + i} x2={300} y2={400 + i} className="subline" />
+                                        <text x={200 + i + 0.2} y={401} className="grid-label" style={{fontSize: '0.4px'}}>{200 + i}</text>
+                                    </React.Fragment>
+                                )
                             ))}
 
                             {filteredTowns.map(town => (
-                                <circle key={town.id} cx={town.x} cy={town.y} r="0.6" className="city-marker shadow-lg" />
+                                <g key={town.id}>
+                                    <circle cx={town.x} cy={town.y} r="0.4" className="city-marker" />
+                                    <circle cx={town.x} cy={town.y} r="0.1" fill="white" />
+                                </g>
                             ))}
                         </svg>
                     </div>
