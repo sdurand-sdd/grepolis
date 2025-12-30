@@ -2,13 +2,13 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Grepolis - Carte Stratégique Océan 24</title>
+    <title>Grepolis - Focus Esmheralda (Format Objet)</title>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { margin: 0; background-color: #020617; color: white; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { margin: 0; background-color: #020617; color: white; overflow: hidden; font-family: sans-serif; }
         .grid-label { font-size: 0.8px; fill: rgba(255,255,255,0.6); font-weight: bold; pointer-events: none; text-shadow: 1px 1px 1px black; }
         .subline { stroke: rgba(255, 255, 255, 0.1); stroke-width: 0.05; pointer-events: none; }
         .city-marker { fill: #22c55e; stroke: white; stroke-width: 0.15; transition: all 0.2s; cursor: pointer; }
@@ -16,8 +16,6 @@
         .tooltip-bg { fill: rgba(15, 23, 42, 0.95); stroke: #fbbf24; stroke-width: 0.2; }
         .tooltip-text { font-size: 1.5px; fill: white; font-weight: bold; }
         .tooltip-sub { font-size: 1.2px; fill: #94a3b8; }
-        svg { cursor: grab; }
-        svg:active { cursor: grabbing; }
     </style>
 </head>
 <body>
@@ -26,52 +24,41 @@
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
 
-        const GrepolisMap = () => {
+        const EsmheraldaMap = () => {
             const [towns, setTowns] = useState([]);
             const [searchTerm, setSearchTerm] = useState("");
             const [hoveredTown, setHoveredTown] = useState(null);
             const [loading, setLoading] = useState(true);
 
-            // --- VOS VALEURS DE CALIBRAGE ---
             const CALIB = { x: 197.9, y: 398.21, w: 98.32, h: 99.86 };
-            
-            // État pour la vue (Zoom/Pan)
             const [viewBox, setViewBox] = useState({ x: 200, y: 400, w: 100, h: 100 });
             const isDragging = useRef(false);
             const lastPos = useRef({ x: 0, y: 0 });
 
-            const decodeName = (str) => {
-                try { return decodeURIComponent((str || "").replace(/\+/g, ' ')); }
-                catch(e) { return str; }
-            };
-
             useEffect(() => {
                 const fetchData = async () => {
                     try {
-                        const [pRes, tRes] = await Promise.all([
-                            fetch('./players.txt').then(r => r.text()),
-                            fetch('./towns.txt').then(r => r.text())
-                        ]);
-                        const pData = {};
-                        pRes.split('\n').forEach(line => {
-                            const p = line.split(',');
-                            if (p.length >= 2) pData[p[0]] = decodeName(p[1]);
-                        });
+                        const res = await fetch('./villes_esmheralda.txt');
+                        const text = await res.text();
+                        
+                        // Analyse du format spécifique {id:..., name:..., x:..., y:...}
                         const tData = [];
-                        tRes.split('\n').forEach(line => {
-                            const p = line.split(',');
-                            if (p.length >= 5) {
-                                const x = parseInt(p[3]), y = parseInt(p[4]);
-                                if (x >= 200 && x <= 299 && y >= 400 && y <= 499) {
-                                    tData.push({ 
-                                        id: p[0], 
-                                        player_name: pData[p[1]] || "Inconnu", 
-                                        name: decodeName(p[2]), 
-                                        x, y, points: p[6] 
-                                    });
+                        const lines = text.split('\n');
+                        
+                        lines.forEach(line => {
+                            if (line.includes('id:')) {
+                                // Extraction via Regex pour plus de fiabilité sur ce format
+                                const id = line.match(/id:(\d+)/)?.[1];
+                                const name = line.match(/name:["'](.+?)["']/)?.[1];
+                                const x = parseInt(line.match(/x:(\d+)/)?.[1]);
+                                const y = parseInt(line.match(/y:(\d+)/)?.[1]);
+
+                                if (id && x && y) {
+                                    tData.push({ id, name, x, y, player_name: "esmheralda" });
                                 }
                             }
                         });
+
                         setTowns(tData);
                         setLoading(false);
                     } catch (e) { console.error(e); }
@@ -79,16 +66,13 @@
                 fetchData();
             }, []);
 
+            // Calcul du total de villes affichées
             const filteredTowns = useMemo(() => {
-                if (!searchTerm || searchTerm.length < 2) return [];
-                return towns.filter(t => t.player_name.toLowerCase().includes(searchTerm.toLowerCase()));
+                return towns.filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()));
             }, [searchTerm, towns]);
 
-            // Interaction : Déplacement
-            const handleMouseDown = (e) => {
-                isDragging.current = true;
-                lastPos.current = { x: e.clientX, y: e.clientY };
-            };
+            // Navigation
+            const handleMouseDown = (e) => { isDragging.current = true; lastPos.current = { x: e.clientX, y: e.clientY }; };
             const handleMouseMove = (e) => {
                 if (!isDragging.current) return;
                 const dx = (e.clientX - lastPos.current.x) * (viewBox.w / window.innerWidth);
@@ -96,56 +80,41 @@
                 setViewBox(prev => ({ ...prev, x: prev.x - dx, y: prev.y - dy }));
                 lastPos.current = { x: e.clientX, y: e.clientY };
             };
-            // Interaction : Zoom
             const handleWheel = (e) => {
                 const factor = e.deltaY > 0 ? 1.1 : 0.9;
                 setViewBox(prev => ({
                     ...prev,
-                    w: Math.max(2, prev.w * factor),
-                    h: Math.max(2, prev.h * factor),
+                    w: Math.max(2, prev.w * factor), h: Math.max(2, prev.h * factor),
                     x: prev.x - (prev.w * factor - prev.w) / 2,
                     y: prev.y - (prev.h * factor - prev.h) / 2
                 }));
             };
 
-            if (loading) return <div className="h-screen flex items-center justify-center text-amber-500 font-bold">CHARGEMENT DE L'OCÉAN 24...</div>;
+            if (loading) return <div className="h-screen flex items-center justify-center font-bold">ANALYSE DU FICHIER ESMHERALDA...</div>;
 
             return (
                 <div className="flex flex-col h-screen overflow-hidden">
                     <header className="bg-slate-900 border-b border-slate-700 p-4 flex justify-between items-center z-10">
                         <div>
-                            <h1 className="text-xl font-bold text-amber-500 tracking-wider">GREPOLIS <span className="text-white font-light">| OCÉAN 24</span></h1>
-                            <p className="text-[10px] text-slate-400">Clic-glisser pour naviguer • Molette pour zoomer</p>
+                            <h1 className="text-xl font-bold text-amber-500 tracking-wider">STRATÉGIE <span className="text-white font-light">| ESMHERALDA</span></h1>
+                            <p className="text-[10px] text-slate-400 uppercase tracking-tighter">Format : Objet JS • Océan 24 • {filteredTowns.length} villes</p>
                         </div>
-                        <div className="relative">
-                            <input 
-                                type="text" 
-                                placeholder="Rechercher un joueur..." 
-                                className="bg-slate-800 border border-slate-600 rounded-full px-5 py-2 text-sm focus:outline-none focus:border-amber-500 w-64 transition-all"
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                            />
-                            {searchTerm && <span className="absolute right-4 top-2.5 text-[10px] text-amber-500 font-bold">{filteredTowns.length} villes</span>}
-                        </div>
+                        <input 
+                            type="text" 
+                            placeholder="Filtrer par nom de ville..." 
+                            className="bg-slate-800 border border-slate-600 rounded-full px-5 py-2 text-sm focus:outline-none focus:border-amber-500 w-64 transition-all"
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
                     </header>
 
-                    <main 
-                        className="flex-1 bg-black relative touch-none"
-                        onMouseDown={handleMouseDown}
-                        onMouseMove={handleMouseMove}
-                        onMouseUp={() => isDragging.current = false}
-                        onMouseLeave={() => isDragging.current = false}
-                        onWheel={handleWheel}
-                    >
+                    <main className="flex-1 bg-black relative cursor-grab active:cursor-grabbing"
+                          onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
+                          onMouseUp={() => isDragging.current = false} onWheel={handleWheel}>
+                        
                         <svg viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`} className="w-full h-full">
-                            {/* L'image avec vos réglages de précision */}
-                            <image 
-                                href="./fond_ocean24.jpg" 
-                                x={CALIB.x} y={CALIB.y} 
-                                width={CALIB.w} height={CALIB.h} 
-                                preserveAspectRatio="none" 
-                            />
+                            <image href="./fond_ocean24.jpg" x={CALIB.x} y={CALIB.y} width={CALIB.w} height={CALIB.h} preserveAspectRatio="none" />
                             
-                            {/* Grille de l'Océan */}
+                            {/* Grille */}
                             {[...Array(11)].map((_, i) => (
                                 <React.Fragment key={i}>
                                     <line x1={200 + i*10} y1={400} x2={200 + i*10} y2={500} className="subline" />
@@ -154,7 +123,6 @@
                                 </React.Fragment>
                             ))}
 
-                            {/* Villes du joueur */}
                             {filteredTowns.map(town => (
                                 <g key={town.id} onMouseEnter={() => setHoveredTown(town)} onMouseLeave={() => setHoveredTown(null)}>
                                     <circle cx={town.x} cy={town.y} r="0.7" fill="black" opacity="0.4" />
@@ -162,26 +130,21 @@
                                     
                                     {hoveredTown?.id === town.id && (
                                         <g pointerEvents="none">
-                                            <rect x={town.x + 1.2} y={town.y - 4.5} width="18" height="6" rx="0.5" className="tooltip-bg" />
+                                            <rect x={town.x + 1.2} y={town.y - 4.5} width="18" height="5" rx="0.5" className="tooltip-bg" />
                                             <text x={town.x + 1.8} y={town.y - 2.8} className="tooltip-text">{town.name}</text>
-                                            <text x={town.x + 1.8} y={town.y - 1.2} className="tooltip-sub">{town.player_name} • {town.points} pts</text>
-                                            <text x={town.x + 1.8} y={town.y + 0.2} className="tooltip-sub" style={{fontSize:'0.9px'}}>[{town.x},{town.y}]</text>
+                                            <text x={town.x + 1.8} y={town.y - 1.2} className="tooltip-sub">Coord: {town.x},{town.y}</text>
                                         </g>
                                     )}
                                 </g>
                             ))}
                         </svg>
                     </main>
-                    
-                    <footer className="bg-slate-900 text-[9px] text-slate-500 p-1 px-4 border-t border-slate-800 text-center uppercase tracking-widest">
-                        Données synchronisées via players.txt et towns.txt • Océan 24 Focus
-                    </footer>
                 </div>
             );
         };
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<GrepolisMap />);
+        root.render(<EsmheraldaMap />);
     </script>
 </body>
 </html>
