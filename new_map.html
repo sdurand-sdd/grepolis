@@ -3,37 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grepolis - Focus Océan 24 (Image)</title>
+    <title>Grepolis - Océan 24 Interactif</title>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { margin: 0; background-color: #020617; color: white; font-family: sans-serif; overflow: hidden; }
-        .grid-label { font-size: 1px; fill: #94a3b8; font-weight: bold; pointer-events: none; text-shadow: 0px 0px 2px black; }
-        /* .ocean-bg { fill: #0f172a; }  <-- SUPPRIMÉ CAR INUTILE AVEC L'IMAGE */
-        .subdivision-line { stroke: rgba(255, 255, 255, 0.3); stroke-width: 0.08; pointer-events: none; } /* Lignes un peu plus claires pour contraster avec l'image */
-        .city-marker { 
-            fill: #22c55e; 
-            stroke: white; 
-            stroke-width: 0.15; 
-            transition: all 0.2s;
-            cursor: pointer;
-        }
-        .city-marker:hover { 
-            fill: #fbbf24; 
-            r: 1.2; 
-        }
-        .tooltip-bg { fill: rgba(15, 23, 42, 0.9); stroke: #fbbf24; stroke-width: 0.2; }
-        .tooltip-text { font-size: 1.5px; fill: white; font-weight: bold; }
-        .tooltip-sub { font-size: 1.2px; fill: #94a3b8; }
+        .grid-label { font-size: 0.9px; fill: #94a3b8; font-weight: bold; pointer-events: none; text-shadow: 1px 1px 1px black; }
+        .subdivision-line { stroke: rgba(255, 255, 255, 0.2); stroke-width: 0.05; pointer-events: none; }
+        .city-marker { fill: #22c55e; stroke: white; stroke-width: 0.15; transition: stroke-width 0.2s; cursor: pointer; }
+        .city-marker:hover { fill: #fbbf24; stroke-width: 0.3; }
+        .tooltip-bg { fill: rgba(15, 23, 42, 0.95); stroke: #fbbf24; stroke-width: 0.2; }
+        .tooltip-text { font-size: 1.4px; fill: white; font-weight: bold; }
+        .tooltip-sub { font-size: 1.1px; fill: #cbd5e1; }
+        svg { cursor: grab; }
+        svg:active { cursor: grabbing; }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
+        const { useState, useEffect, useMemo, useRef } = React;
 
         const Ocean24Map = () => {
             const [towns, setTowns] = useState([]);
@@ -41,18 +33,17 @@
             const [loading, setLoading] = useState(true);
             const [hoveredTown, setHoveredTown] = useState(null);
 
-            const minX = 200, maxX = 299;
-            const minY = 400, maxY = 499;
+            // État pour le Zoom et Pan
+            const [viewBox, setViewBox] = useState({ x: 200, y: 400, w: 100, h: 100 });
+            const isDragging = useRef(false);
+            const lastMousePos = useRef({ x: 0, y: 0 });
 
-            // --- FONCTION DE DECODAGE DES ACCENTS ---
+            const minX = 200, maxX = 299, minY = 400, maxY = 499;
+
             const decodeGrepolisName = (str) => {
                 if (!str) return "";
-                try {
-                    // Remplace les + par des espaces, puis décode l'URL
-                    return decodeURIComponent(str.replace(/\+/g, ' '));
-                } catch (e) {
-                    return str; // Retourne le texte brut en cas d'erreur
-                }
+                try { return decodeURIComponent(str.replace(/\+/g, ' ')); }
+                catch (e) { return str; }
             };
 
             useEffect(() => {
@@ -62,31 +53,22 @@
                             fetch('./players.txt').then(r => r.text()),
                             fetch('./towns.txt').then(r => r.text())
                         ]);
-
                         const pData = {};
                         pRes.split('\n').forEach(line => {
                             const p = line.split(',');
-                            if (p.length >= 2) {
-                                // On décode le nom du joueur ici
-                                pData[p[0]] = decodeGrepolisName(p[1]);
-                            }
+                            if (p.length >= 2) pData[p[0]] = decodeGrepolisName(p[1]);
                         });
-
                         const tData = [];
                         tRes.split('\n').forEach(line => {
                             const p = line.split(',');
                             if (p.length >= 5) {
-                                const x = parseInt(p[3]);
-                                const y = parseInt(p[4]);
+                                const x = parseInt(p[3]), y = parseInt(p[4]);
                                 if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
                                     tData.push({
                                         id: p[0],
                                         player_name: pData[p[1]] || "Inconnu",
-                                        // On décode le nom de la ville ici
                                         name: decodeGrepolisName(p[2]),
-                                        x: x,
-                                        y: y,
-                                        points: p[6]
+                                        x, y, points: p[6]
                                     });
                                 }
                             }
@@ -97,10 +79,43 @@
                 };
                 fetchData();
             }, []);
+
             const filteredTowns = useMemo(() => {
                 if (!searchTerm || searchTerm.length < 2) return [];
                 return towns.filter(t => t.player_name.toLowerCase().includes(searchTerm.toLowerCase()));
             }, [searchTerm, towns]);
+
+            // --- GESTION DU ZOOM ET DU DÉPLACEMENT ---
+            const handleWheel = (e) => {
+                e.preventDefault();
+                const scaleFactor = e.deltaY > 0 ? 1.1 : 0.9;
+                const newW = Math.min(Math.max(viewBox.w * scaleFactor, 10), 150);
+                const newH = newW; // Garder le ratio carré
+                
+                // Zoomer vers la position de la souris
+                setViewBox(prev => ({
+                    ...prev,
+                    w: newW,
+                    h: newH,
+                    x: prev.x - (newW - prev.w) / 2,
+                    y: prev.y - (newH - prev.h) / 2
+                }));
+            };
+
+            const handleMouseDown = (e) => {
+                isDragging.current = true;
+                lastMousePos.current = { x: e.clientX, y: e.clientY };
+            };
+
+            const handleMouseMove = (e) => {
+                if (!isDragging.current) return;
+                const dx = (e.clientX - lastMousePos.current.x) * (viewBox.w / window.innerWidth);
+                const dy = (e.clientY - lastMousePos.current.y) * (viewBox.h / window.innerHeight);
+                setViewBox(prev => ({ ...prev, x: prev.x - dx, y: prev.y - dy }));
+                lastMousePos.current = { x: e.clientX, y: e.clientY };
+            };
+
+            const handleMouseUp = () => { isDragging.current = false; };
 
             const gridElements = useMemo(() => {
                 const elements = [];
@@ -110,21 +125,20 @@
                 }
                 for (let ix = 0; ix <= 100; ix += 10) {
                     for (let iy = 0; iy <= 100; iy += 10) {
-                        // Ajout d'une petite ombre portée au texte pour qu'il reste lisible sur une image
                         elements.push(<text key={`l-${ix}-${iy}`} x={minX+ix+0.5} y={minY+iy+1.2} className="grid-label">{minX+ix},{minY+iy}</text>);
                     }
                 }
                 return elements;
             }, []);
 
-            if (loading) return <div className="h-screen flex items-center justify-center">Chargement Océan 24...</div>;
+            if (loading) return <div className="h-screen flex items-center justify-center">Chargement...</div>;
 
             return (
-                <div className="flex flex-col h-screen">
-                    <div className="p-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between z-10 relative">
+                <div className="flex flex-col h-screen select-none">
+                    <div className="p-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between z-20">
                         <div>
                             <h1 className="text-xl font-bold text-amber-500">Océan 24</h1>
-                            <p className="text-xs text-slate-500">Fond : Image locale | Filtrage par joueur</p>
+                            <p className="text-[10px] text-slate-400">Molette : Zoom | Clic-glisser : Déplacer</p>
                         </div>
                         <input 
                             type="text" 
@@ -134,50 +148,29 @@
                         />
                     </div>
 
-                    <div className="flex-1 bg-black relative">
-                        {/* ViewBox ajusté pour éviter les bords coupés */}
-                        <svg viewBox={`${minX} ${minY} 100 100`} className="w-full h-full">
+                    <div className="flex-1 bg-black relative overflow-hidden" 
+                         onWheel={handleWheel} 
+                         onMouseDown={handleMouseDown} 
+                         onMouseMove={handleMouseMove} 
+                         onMouseUp={handleMouseUp} 
+                         onMouseLeave={handleMouseUp}>
+                        
+                        <svg viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`} className="w-full h-full">
+                            <image href="./fond_ocean24.jpg" x={minX} y={minY} width="100" height="100" preserveAspectRatio="none" />
                             
-                            {/* --- REMPLACEMENT DU FOND --- */}
-                            {/* Ancienne ligne (rectangle bleu) :
-                            <rect x={minX} y={minY} width="100" height="100" className="ocean-bg" /> 
-                            */}
-                            
-                            {/* Nouvelle ligne (Image de fond) : */}
-                            {/* Assurez-vous que le fichier s'appelle exactement ainsi et est dans le même dossier */}
-                            <image 
-                                href="./fond_ocean24.jpg" 
-                                x={minX} 
-                                y={minY} 
-                                width="100" 
-                                height="100" 
-                                preserveAspectRatio="none" // Force l'image à remplir exactement le carré 100x100
-                            />
-                            {/* --------------------------- */}
-
                             {gridElements}
 
                             {filteredTowns.map(town => (
-                                <g key={town.id} 
-                                   onMouseEnter={() => setHoveredTown(town)}
-                                   onMouseLeave={() => setHoveredTown(null)}>
-                                    {/* Ajout d'une petite ombre noire sous le point vert pour qu'il ressorte sur l'image */}
-                                    <circle cx={town.x} cy={town.y} r="0.8" fill="black" opacity="0.5" />
-                                    <circle cx={town.x} cy={town.y} r="0.7" className="city-marker" />
+                                <g key={town.id} onMouseEnter={() => setHoveredTown(town)} onMouseLeave={() => setHoveredTown(null)}>
+                                    <circle cx={town.x} cy={town.y} r="0.8" fill="black" opacity="0.4" />
+                                    <circle cx={town.x} cy={town.y} r="0.6" className="city-marker" />
                                     
                                     {hoveredTown?.id === town.id && (
-                                        <g pointerEvents="none" style={{zIndex: 50}}>
-                                            <rect 
-                                                x={town.x + 1.5} y={town.y - 4} 
-                                                width="15" height="5" rx="0.5"
-                                                className="tooltip-bg"
-                                            />
-                                            <text x={town.x + 2} y={town.y - 2.2} className="tooltip-text">
-                                                {town.name}
-                                            </text>
-                                            <text x={town.x + 2} y={town.y - 0.8} className="tooltip-sub">
-                                                {town.player_name} ({town.points} pts)
-                                            </text>
+                                        <g pointerEvents="none">
+                                            <rect x={town.x + 1.2} y={town.y - 4.5} width="16" height="5.5" rx="0.4" className="tooltip-bg" />
+                                            <text x={town.x + 1.8} y={town.y - 2.8} className="tooltip-text">{town.name}</text>
+                                            <text x={town.x + 1.8} y={town.y - 1.2} className="tooltip-sub">{town.player_name} ({town.points} pts)</text>
+                                            <text x={town.x + 1.8} y={town.y + 0.2} className="tooltip-sub" style={{fontSize: '0.9px'}}>Coord: {town.x},{town.y}</text>
                                         </g>
                                     )}
                                 </g>
