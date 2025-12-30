@@ -3,17 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grepolis - Focus Océan 24</title>
+    <title>Grepolis - Focus Océan 24 (Épuré)</title>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { margin: 0; background-color: #020617; color: white; font-family: sans-serif; }
-        .grid-label { font-size: 1.2px; fill: #64748b; font-weight: bold; }
+        body { margin: 0; background-color: #020617; color: white; font-family: sans-serif; overflow: hidden; }
+        .grid-label { font-size: 1px; fill: #475569; font-weight: bold; pointer-events: none; }
         .ocean-bg { fill: #0f172a; }
-        .subdivision-line { stroke: #1e293b; stroke-width: 0.1; }
-        .city-marker { fill: #22c55e; stroke: white; stroke-width: 0.2; }
+        .subdivision-line { stroke: #1e293b; stroke-width: 0.1; pointer-events: none; }
+        .city-marker { 
+            fill: #22c55e; 
+            stroke: white; 
+            stroke-width: 0.15; 
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .city-marker:hover { 
+            fill: #fbbf24; 
+            r: 1.2; 
+        }
+        .tooltip-bg { fill: rgba(15, 23, 42, 0.9); stroke: #fbbf24; stroke-width: 0.2; }
+        .tooltip-text { font-size: 1.5px; fill: white; font-weight: bold; }
+        .tooltip-sub { font-size: 1.2px; fill: #94a3b8; }
     </style>
 </head>
 <body>
@@ -24,9 +37,9 @@
 
         const Ocean24Map = () => {
             const [towns, setTowns] = useState([]);
-            const [players, setPlayers] = useState({});
             const [searchTerm, setSearchTerm] = useState("");
             const [loading, setLoading] = useState(true);
+            const [hoveredTown, setHoveredTown] = useState(null);
 
             // Coordonnées de l'Océan 24
             const minX = 200, maxX = 299;
@@ -43,7 +56,7 @@
                         const pData = {};
                         pRes.split('\n').forEach(line => {
                             const p = line.split(',');
-                            if (p.length >= 2) pData[p[0]] = p[1]; // ID -> Nom
+                            if (p.length >= 2) pData[p[0]] = p[1];
                         });
 
                         const tData = [];
@@ -52,132 +65,91 @@
                             if (p.length >= 5) {
                                 const x = parseInt(p[3]);
                                 const y = parseInt(p[4]);
-                                // On ne garde que les villes de l'Océan 24
                                 if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
                                     tData.push({
                                         id: p[0],
-                                        player_id: p[1],
                                         player_name: pData[p[1]] || "Inconnu",
                                         name: p[2],
                                         x: x,
-                                        y: y
+                                        y: y,
+                                        points: p[6]
                                     });
                                 }
                             }
                         });
-
-                        setPlayers(pData);
                         setTowns(tData);
-                    } catch (err) {
-                        console.error("Erreur chargement:", err);
-                    } finally {
-                        setLoading(false);
-                    }
+                    } catch (err) { console.error(err); }
+                    finally { setLoading(false); }
                 };
                 fetchData();
             }, []);
 
-            // Filtrer les villes selon le joueur recherché
             const filteredTowns = useMemo(() => {
                 if (!searchTerm || searchTerm.length < 2) return [];
-                return towns.filter(t => 
-                    t.player_name.toLowerCase().includes(searchTerm.toLowerCase())
-                );
+                return towns.filter(t => t.player_name.toLowerCase().includes(searchTerm.toLowerCase()));
             }, [searchTerm, towns]);
 
-            // Générer les lignes de la grille et les coordonnées aux angles
             const gridElements = useMemo(() => {
                 const elements = [];
-                // Lignes verticales et horizontales tous les 10 points
                 for (let i = 0; i <= 100; i += 10) {
-                    const xCoord = minX + i;
-                    const yCoord = minY + i;
-
-                    // Lignes
-                    elements.push(<line key={`v-${i}`} x1={xCoord} y1={minY} x2={xCoord} y2={maxY+1} className="subdivision-line" />);
-                    elements.push(<line key={`h-${i}`} x1={minX} y1={yCoord} x2={maxX+1} y2={yCoord} className="subdivision-line" />);
+                    elements.push(<line key={`v-${i}`} x1={minX+i} y1={minY} x2={minX+i} y2={maxY+1} className="subdivision-line" />);
+                    elements.push(<line key={`h-${i}`} x1={minX} y1={minY+i} x2={maxX+1} y2={minY+i} className="subdivision-line" />);
                 }
-
-                // Coordonnées aux angles des subdivisions (chaque intersection)
                 for (let ix = 0; ix <= 100; ix += 10) {
                     for (let iy = 0; iy <= 100; iy += 10) {
-                        const curX = minX + ix;
-                        const curY = minY + iy;
-                        elements.push(
-                            <text 
-                                key={`lbl-${curX}-${curY}`} 
-                                x={curX + 0.5} 
-                                y={curY + 1.5} 
-                                className="grid-label"
-                            >
-                                {curX},{curY}
-                            </text>
-                        );
+                        elements.push(<text key={`l-${ix}-${iy}`} x={minX+ix+0.5} y={minY+iy+1.2} className="grid-label">{minX+ix},{minY+iy}</text>);
                     }
                 }
                 return elements;
             }, []);
 
-            if (loading) return <div className="p-10 text-center">Chargement des données de l'Océan 24...</div>;
+            if (loading) return <div className="h-screen flex items-center justify-center">Chargement Océan 24...</div>;
 
             return (
                 <div className="flex flex-col h-screen">
-                    {/* Barre de recherche */}
-                    <div className="p-4 bg-slate-900 border-b border-slate-700 flex items-center justify-between">
+                    <div className="p-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
                         <div>
                             <h1 className="text-xl font-bold text-amber-500">Océan 24</h1>
-                            <p className="text-xs text-slate-400">X: 200-299 | Y: 400-499</p>
+                            <p className="text-xs text-slate-500">Filtrage par joueur | Survol pour détails</p>
                         </div>
-                        <div className="flex flex-col items-end">
-                            <input 
-                                type="text" 
-                                placeholder="Entrez le nom d'un joueur..." 
-                                className="bg-slate-800 border border-slate-600 px-4 py-2 rounded-lg w-64 focus:border-amber-500 outline-none"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                            />
-                            <span className="text-[10px] mt-1 text-slate-500">
-                                {searchTerm ? `${filteredTowns.length} ville(s) trouvée(s)` : "Entrez un nom pour afficher les villes"}
-                            </span>
-                        </div>
+                        <input 
+                            type="text" 
+                            placeholder="Nom du joueur..." 
+                            className="bg-slate-800 border border-slate-700 px-4 py-2 rounded-lg w-64 focus:border-amber-500 outline-none text-sm"
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
                     </div>
 
-                    {/* Carte SVG */}
-                    <div className="flex-1 bg-black overflow-hidden relative">
-                        <svg 
-                            viewBox={`${minX} ${minY} 101 101`} 
-                            className="w-full h-full p-4"
-                        >
-                            {/* Fond marin */}
+                    <div className="flex-1 bg-black relative">
+                        <svg viewBox={`${minX-1} ${minY-1} 103 103`} className="w-full h-full p-2">
                             <rect x={minX} y={minY} width="100" height="100" className="ocean-bg" />
-                            
-                            {/* Grille et Coordonnées */}
                             {gridElements}
 
-                            {/* Villes du joueur recherché */}
                             {filteredTowns.map(town => (
-                                <g key={town.id}>
-                                    <circle 
-                                        cx={town.x} 
-                                        cy={town.y} 
-                                        r="0.8" 
-                                        className="city-marker"
-                                    />
-                                    <text 
-                                        x={town.x + 1} 
-                                        y={town.y - 1} 
-                                        style={{fontSize: '1.2px', fill: 'white'}}
-                                    >
-                                        {town.name}
-                                    </text>
+                                <g key={town.id} 
+                                   onMouseEnter={() => setHoveredTown(town)}
+                                   onMouseLeave={() => setHoveredTown(null)}>
+                                    <circle cx={town.x} cy={town.y} r="0.7" className="city-marker" />
+                                    
+                                    {hoveredTown?.id === town.id && (
+                                        <g pointerEvents="none">
+                                            {/* Petite étiquette d'info */}
+                                            <rect 
+                                                x={town.x + 1.5} y={town.y - 4} 
+                                                width="15" height="5" rx="0.5"
+                                                className="tooltip-bg"
+                                            />
+                                            <text x={town.x + 2} y={town.y - 2.2} className="tooltip-text">
+                                                {town.name}
+                                            </text>
+                                            <text x={town.x + 2} y={town.y - 0.8} className="tooltip-sub">
+                                                {town.player_name} ({town.points} pts)
+                                            </text>
+                                        </g>
+                                    )}
                                 </g>
                             ))}
                         </svg>
-                    </div>
-
-                    {/* Légende rapide */}
-                    <div className="p-2 bg-slate-900 text-[10px] text-slate-500 text-center border-t border-slate-800">
-                        Chaque carré représente une zone de 10x10. Les coordonnées affichées sont les points d'ancrage (min/max) de la grille.
                     </div>
                 </div>
             );
