@@ -2,18 +2,19 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Grepolis - Océan 24 (Calibrage)</title>
+    <title>Grepolis - Calibrage de Précision</title>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/babel-standalone/7.23.5/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { margin: 0; background-color: #020617; color: white; overflow: hidden; font-family: sans-serif; }
-        .grid-label { font-size: 0.8px; fill: rgba(255,255,255,0.5); pointer-events: none; }
-        .subdivision-line { stroke: rgba(255, 255, 255, 0.15); stroke-width: 0.05; pointer-events: none; }
-        .city-marker { fill: #22c55e; stroke: white; stroke-width: 0.15; cursor: pointer; }
-        .control-panel { background: rgba(15, 23, 42, 0.9); border-bottom: 1px solid #334155; }
-        input[type=range] { width: 100px; height: 4px; }
+        .grid-label { font-size: 0.7px; fill: #64748b; pointer-events: none; }
+        .subline { stroke: rgba(255, 255, 255, 0.1); stroke-width: 0.05; }
+        .city-marker { fill: #22c55e; stroke: white; stroke-width: 0.1; }
+        .btn-step { background: #334155; padding: 0 5px; border-radius: 3px; font-weight: bold; transition: background 0.2s; }
+        .btn-step:hover { background: #475569; }
+        input[type=number] { background: #1e293b; border: 1px solid #334155; border-radius: 3px; width: 60px; text-align: center; }
     </style>
 </head>
 <body>
@@ -25,26 +26,11 @@
         const Ocean24Map = () => {
             const [towns, setTowns] = useState([]);
             const [searchTerm, setSearchTerm] = useState("");
-            const [loading, setLoading] = useState(true);
+            const [opacity, setOpacity] = useState(1);
             
-            // --- ÉTATS DE CALIBRAGE DE L'IMAGE ---
-            const [imgConfig, setImgConfig] = useState({
-                x: 200,      // Position X de l'image
-                y: 400,      // Position Y de l'image
-                w: 100,      // Largeur de l'image (en unités de grille)
-                h: 100       // Hauteur de l'image
-            });
-
+            // ÉTAT DE CALIBRAGE
+            const [img, setImg] = useState({ x: 200, y: 400, w: 100, h: 100 });
             const [viewBox, setViewBox] = useState({ x: 200, y: 400, w: 100, h: 100 });
-            const isDragging = useRef(false);
-            const lastMousePos = useRef({ x: 0, y: 0 });
-
-            const minX = 200, maxX = 299, minY = 400, maxY = 499;
-
-            const decodeGrepolisName = (str) => {
-                try { return decodeURIComponent((str || "").replace(/\+/g, ' ')); }
-                catch (e) { return str; }
-            };
 
             useEffect(() => {
                 const fetchData = async () => {
@@ -56,21 +42,20 @@
                         const pData = {};
                         pRes.split('\n').forEach(line => {
                             const p = line.split(',');
-                            if (p.length >= 2) pData[p[0]] = decodeGrepolisName(p[1]);
+                            if (p.length >= 2) pData[p[0]] = decodeURIComponent((p[1] || "").replace(/\+/g, ' '));
                         });
                         const tData = [];
                         tRes.split('\n').forEach(line => {
                             const p = line.split(',');
                             if (p.length >= 5) {
                                 const x = parseInt(p[3]), y = parseInt(p[4]);
-                                if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
-                                    tData.push({ id: p[0], player_name: pData[p[1]] || "Inconnu", name: decodeGrepolisName(p[2]), x, y });
+                                if (x >= 200 && x <= 299 && y >= 400 && y <= 499) {
+                                    tData.push({ id: p[0], player_name: pData[p[1]] || "Inconnu", x, y });
                                 }
                             }
                         });
                         setTowns(tData);
-                        setLoading(false);
-                    } catch (err) { console.error(err); }
+                    } catch (e) {}
                 };
                 fetchData();
             }, []);
@@ -80,85 +65,62 @@
                 return towns.filter(t => t.player_name.toLowerCase().includes(searchTerm.toLowerCase()));
             }, [searchTerm, towns]);
 
-            // Handlers pour le Zoom/Pan
-            const handleWheel = (e) => {
-                const factor = e.deltaY > 0 ? 1.1 : 0.9;
-                setViewBox(prev => ({ ...prev, w: prev.w * factor, h: prev.h * factor }));
+            const adjust = (key, delta) => {
+                setImg(prev => ({ ...prev, [key]: parseFloat((prev[key] + delta).toFixed(2)) }));
             };
-
-            const handleMouseMove = (e) => {
-                if (!isDragging.current) return;
-                const dx = (e.clientX - lastMousePos.current.x) * (viewBox.w / window.innerWidth);
-                const dy = (e.clientY - lastMousePos.current.y) * (viewBox.h / window.innerHeight);
-                setViewBox(prev => ({ ...prev, x: prev.x - dx, y: prev.y - dy }));
-                lastMousePos.current = { x: e.clientX, y: e.clientY };
-            };
-
-            const updateImg = (key, val) => setImgConfig(prev => ({ ...prev, [key]: parseFloat(val) }));
-
-            if (loading) return <div className="p-10 text-center text-amber-500">Chargement des données...</div>;
 
             return (
                 <div className="flex flex-col h-screen select-none">
-                    {/* PANNEAU DE CONTRÔLE ET CALIBRAGE */}
-                    <div className="control-panel p-3 flex flex-wrap items-center gap-6 text-xs">
-                        <div className="flex flex-col">
-                            <label className="text-amber-500 font-bold mb-1">RECHERCHE JOUEUR</label>
-                            <input type="text" className="bg-slate-800 border border-slate-600 px-2 py-1 rounded" 
-                                   onChange={(e) => setSearchTerm(e.target.value)} placeholder="Pseudo..." />
+                    {/* PANNEAU DE CONTRÔLE AVEC BOUTONS PAS À PAS */}
+                    <div className="bg-slate-900 border-b border-slate-700 p-3 flex flex-wrap gap-4 items-center text-[11px]">
+                        <div className="flex flex-col gap-1">
+                            <span className="text-amber-500 font-bold uppercase text-[9px]">Chercher Joueur</span>
+                            <input type="text" className="bg-slate-800 border border-slate-600 px-2 py-1 rounded w-40" 
+                                   onChange={(e) => setSearchTerm(e.target.value)} placeholder="Nom..." />
                         </div>
 
-                        <div className="flex gap-4 border-l border-slate-700 pl-4">
-                            <div className="flex flex-col">
-                                <label>Décalage X ({imgConfig.x})</label>
-                                <input type="range" min="150" max="250" step="0.1" value={imgConfig.x} onChange={(e) => updateImg('x', e.target.value)} />
+                        {['x', 'y', 'w', 'h'].map(key => (
+                            <div key={key} className="flex flex-col items-center bg-slate-800 p-2 rounded border border-slate-700">
+                                <span className="uppercase font-bold mb-1 text-slate-400">{key}</span>
+                                <div className="flex items-center gap-1">
+                                    <button className="btn-step" onClick={() => adjust(key, -0.1)}>-</button>
+                                    <input type="number" value={img[key]} step="0.1" 
+                                           onChange={(e) => setImg({...img, [key]: parseFloat(e.target.value)})}/>
+                                    <button className="btn-step" onClick={() => adjust(key, 0.1)}>+</button>
+                                </div>
                             </div>
-                            <div className="flex flex-col">
-                                <label>Décalage Y ({imgConfig.y})</label>
-                                <input type="range" min="350" max="450" step="0.1" value={imgConfig.y} onChange={(e) => updateImg('y', e.target.value)} />
-                            </div>
-                            <div className="flex flex-col">
-                                <label>Largeur Image ({imgConfig.w})</label>
-                                <input type="range" min="80" max="150" step="0.1" value={imgConfig.w} onChange={(e) => updateImg('w', e.target.value)} />
-                            </div>
-                            <div className="flex flex-col">
-                                <label>Hauteur Image ({imgConfig.h})</label>
-                                <input type="range" min="80" max="150" step="0.1" value={imgConfig.h} onChange={(e) => updateImg('h', e.target.value)} />
-                            </div>
+                        ))}
+
+                        <div className="flex flex-col gap-1 border-l border-slate-700 pl-4">
+                            <span className="text-slate-400 font-bold uppercase text-[9px]">Opacité fond</span>
+                            <input type="range" min="0" max="1" step="0.1" value={opacity} onChange={(e)=>setOpacity(e.target.value)} className="w-20"/>
                         </div>
-                        <div className="ml-auto text-slate-400 italic">
-                            Ajustez les curseurs pour aligner les îles avec les points verts.
+
+                        <div className="ml-auto bg-amber-900/30 p-2 rounded text-amber-200 border border-amber-700/50">
+                            <strong>Note :</strong> Une fois les villes alignées, copiez ces 4 valeurs !
                         </div>
                     </div>
 
-                    <div className="flex-1 bg-black overflow-hidden relative" 
-                         onWheel={handleWheel} 
-                         onMouseDown={(e) => { isDragging.current = true; lastMousePos.current = { x: e.clientX, y: e.clientY }; }}
-                         onMouseMove={handleMouseMove}
-                         onMouseUp={() => isDragging.current = false}>
+                    <div className="flex-1 bg-black relative overflow-hidden cursor-move"
+                         onWheel={(e) => {
+                             const factor = e.deltaY > 0 ? 1.05 : 0.95;
+                             setViewBox(p => ({ ...p, w: p.w * factor, h: p.h * factor }));
+                         }}>
                         
                         <svg viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`} className="w-full h-full">
-                            {/* IMAGE DE FOND AVEC SES PARAMÈTRES DE CALIBRAGE */}
-                            <image 
-                                href="./fond_ocean24.jpg" 
-                                x={imgConfig.x} 
-                                y={imgConfig.y} 
-                                width={imgConfig.w} 
-                                height={imgConfig.h} 
-                                preserveAspectRatio="none" 
-                            />
+                            <image href="./fond_ocean24.jpg" x={img.x} y={img.y} width={img.w} height={img.h} opacity={opacity} preserveAspectRatio="none" />
                             
-                            {/* Grille fixe de l'Océan 24 */}
+                            {/* Grille de repère (10x10) */}
                             {[...Array(11)].map((_, i) => (
                                 <React.Fragment key={i}>
-                                    <line x1={200 + i * 10} y1={400} x2={200 + i * 10} y2={500} className="subdivision-line" />
-                                    <line x1={200} y1={400 + i * 10} x2={300} y2={400 + i * 10} className="subdivision-line" />
-                                    <text x={200 + i * 10 + 0.5} y={401.5} className="grid-label">{200 + i * 10}</text>
+                                    <line x1={200 + i*10} y1={400} x2={200 + i*10} y2={500} className="subline" />
+                                    <line x1={200} y1={400 + i*10} x2={300} y2={400 + i*10} className="subline" />
+                                    <text x={200 + i*10 + 0.5} y={401.5} className="grid-label">{200 + i*10}</text>
                                 </React.Fragment>
                             ))}
 
                             {filteredTowns.map(town => (
-                                <circle key={town.id} cx={town.x} cy={town.y} r="0.6" className="city-marker" />
+                                <circle key={town.id} cx={town.x} cy={town.y} r="0.6" className="city-marker shadow-lg" />
                             ))}
                         </svg>
                     </div>
