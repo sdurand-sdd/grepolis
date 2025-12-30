@@ -2,23 +2,18 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grepolis - Océan 24 Interactif</title>
+    <title>Grepolis - Océan 24 (Calibrage)</title>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { margin: 0; background-color: #020617; color: white; font-family: sans-serif; overflow: hidden; }
-        .grid-label { font-size: 0.9px; fill: #94a3b8; font-weight: bold; pointer-events: none; text-shadow: 1px 1px 1px black; }
-        .subdivision-line { stroke: rgba(255, 255, 255, 0.2); stroke-width: 0.05; pointer-events: none; }
-        .city-marker { fill: #22c55e; stroke: white; stroke-width: 0.15; transition: stroke-width 0.2s; cursor: pointer; }
-        .city-marker:hover { fill: #fbbf24; stroke-width: 0.3; }
-        .tooltip-bg { fill: rgba(15, 23, 42, 0.95); stroke: #fbbf24; stroke-width: 0.2; }
-        .tooltip-text { font-size: 1.4px; fill: white; font-weight: bold; }
-        .tooltip-sub { font-size: 1.1px; fill: #cbd5e1; }
-        svg { cursor: grab; }
-        svg:active { cursor: grabbing; }
+        body { margin: 0; background-color: #020617; color: white; overflow: hidden; font-family: sans-serif; }
+        .grid-label { font-size: 0.8px; fill: rgba(255,255,255,0.5); pointer-events: none; }
+        .subdivision-line { stroke: rgba(255, 255, 255, 0.15); stroke-width: 0.05; pointer-events: none; }
+        .city-marker { fill: #22c55e; stroke: white; stroke-width: 0.15; cursor: pointer; }
+        .control-panel { background: rgba(15, 23, 42, 0.9); border-bottom: 1px solid #334155; }
+        input[type=range] { width: 100px; height: 4px; }
     </style>
 </head>
 <body>
@@ -31,9 +26,15 @@
             const [towns, setTowns] = useState([]);
             const [searchTerm, setSearchTerm] = useState("");
             const [loading, setLoading] = useState(true);
-            const [hoveredTown, setHoveredTown] = useState(null);
+            
+            // --- ÉTATS DE CALIBRAGE DE L'IMAGE ---
+            const [imgConfig, setImgConfig] = useState({
+                x: 200,      // Position X de l'image
+                y: 400,      // Position Y de l'image
+                w: 100,      // Largeur de l'image (en unités de grille)
+                h: 100       // Hauteur de l'image
+            });
 
-            // État pour le Zoom et Pan
             const [viewBox, setViewBox] = useState({ x: 200, y: 400, w: 100, h: 100 });
             const isDragging = useRef(false);
             const lastMousePos = useRef({ x: 0, y: 0 });
@@ -41,8 +42,7 @@
             const minX = 200, maxX = 299, minY = 400, maxY = 499;
 
             const decodeGrepolisName = (str) => {
-                if (!str) return "";
-                try { return decodeURIComponent(str.replace(/\+/g, ' ')); }
+                try { return decodeURIComponent((str || "").replace(/\+/g, ' ')); }
                 catch (e) { return str; }
             };
 
@@ -64,18 +64,13 @@
                             if (p.length >= 5) {
                                 const x = parseInt(p[3]), y = parseInt(p[4]);
                                 if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
-                                    tData.push({
-                                        id: p[0],
-                                        player_name: pData[p[1]] || "Inconnu",
-                                        name: decodeGrepolisName(p[2]),
-                                        x, y, points: p[6]
-                                    });
+                                    tData.push({ id: p[0], player_name: pData[p[1]] || "Inconnu", name: decodeGrepolisName(p[2]), x, y });
                                 }
                             }
                         });
                         setTowns(tData);
+                        setLoading(false);
                     } catch (err) { console.error(err); }
-                    finally { setLoading(false); }
                 };
                 fetchData();
             }, []);
@@ -85,26 +80,10 @@
                 return towns.filter(t => t.player_name.toLowerCase().includes(searchTerm.toLowerCase()));
             }, [searchTerm, towns]);
 
-            // --- GESTION DU ZOOM ET DU DÉPLACEMENT ---
+            // Handlers pour le Zoom/Pan
             const handleWheel = (e) => {
-                e.preventDefault();
-                const scaleFactor = e.deltaY > 0 ? 1.1 : 0.9;
-                const newW = Math.min(Math.max(viewBox.w * scaleFactor, 10), 150);
-                const newH = newW; // Garder le ratio carré
-                
-                // Zoomer vers la position de la souris
-                setViewBox(prev => ({
-                    ...prev,
-                    w: newW,
-                    h: newH,
-                    x: prev.x - (newW - prev.w) / 2,
-                    y: prev.y - (newH - prev.h) / 2
-                }));
-            };
-
-            const handleMouseDown = (e) => {
-                isDragging.current = true;
-                lastMousePos.current = { x: e.clientX, y: e.clientY };
+                const factor = e.deltaY > 0 ? 1.1 : 0.9;
+                setViewBox(prev => ({ ...prev, w: prev.w * factor, h: prev.h * factor }));
             };
 
             const handleMouseMove = (e) => {
@@ -115,65 +94,71 @@
                 lastMousePos.current = { x: e.clientX, y: e.clientY };
             };
 
-            const handleMouseUp = () => { isDragging.current = false; };
+            const updateImg = (key, val) => setImgConfig(prev => ({ ...prev, [key]: parseFloat(val) }));
 
-            const gridElements = useMemo(() => {
-                const elements = [];
-                for (let i = 0; i <= 100; i += 10) {
-                    elements.push(<line key={`v-${i}`} x1={minX+i} y1={minY} x2={minX+i} y2={maxY+1} className="subdivision-line" />);
-                    elements.push(<line key={`h-${i}`} x1={minX} y1={minY+i} x2={maxX+1} y2={minY+i} className="subdivision-line" />);
-                }
-                for (let ix = 0; ix <= 100; ix += 10) {
-                    for (let iy = 0; iy <= 100; iy += 10) {
-                        elements.push(<text key={`l-${ix}-${iy}`} x={minX+ix+0.5} y={minY+iy+1.2} className="grid-label">{minX+ix},{minY+iy}</text>);
-                    }
-                }
-                return elements;
-            }, []);
-
-            if (loading) return <div className="h-screen flex items-center justify-center">Chargement...</div>;
+            if (loading) return <div className="p-10 text-center text-amber-500">Chargement des données...</div>;
 
             return (
                 <div className="flex flex-col h-screen select-none">
-                    <div className="p-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between z-20">
-                        <div>
-                            <h1 className="text-xl font-bold text-amber-500">Océan 24</h1>
-                            <p className="text-[10px] text-slate-400">Molette : Zoom | Clic-glisser : Déplacer</p>
+                    {/* PANNEAU DE CONTRÔLE ET CALIBRAGE */}
+                    <div className="control-panel p-3 flex flex-wrap items-center gap-6 text-xs">
+                        <div className="flex flex-col">
+                            <label className="text-amber-500 font-bold mb-1">RECHERCHE JOUEUR</label>
+                            <input type="text" className="bg-slate-800 border border-slate-600 px-2 py-1 rounded" 
+                                   onChange={(e) => setSearchTerm(e.target.value)} placeholder="Pseudo..." />
                         </div>
-                        <input 
-                            type="text" 
-                            placeholder="Nom du joueur..." 
-                            className="bg-slate-800 border border-slate-700 px-4 py-2 rounded-lg w-64 focus:border-amber-500 outline-none text-sm"
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
+
+                        <div className="flex gap-4 border-l border-slate-700 pl-4">
+                            <div className="flex flex-col">
+                                <label>Décalage X ({imgConfig.x})</label>
+                                <input type="range" min="150" max="250" step="0.1" value={imgConfig.x} onChange={(e) => updateImg('x', e.target.value)} />
+                            </div>
+                            <div className="flex flex-col">
+                                <label>Décalage Y ({imgConfig.y})</label>
+                                <input type="range" min="350" max="450" step="0.1" value={imgConfig.y} onChange={(e) => updateImg('y', e.target.value)} />
+                            </div>
+                            <div className="flex flex-col">
+                                <label>Largeur Image ({imgConfig.w})</label>
+                                <input type="range" min="80" max="150" step="0.1" value={imgConfig.w} onChange={(e) => updateImg('w', e.target.value)} />
+                            </div>
+                            <div className="flex flex-col">
+                                <label>Hauteur Image ({imgConfig.h})</label>
+                                <input type="range" min="80" max="150" step="0.1" value={imgConfig.h} onChange={(e) => updateImg('h', e.target.value)} />
+                            </div>
+                        </div>
+                        <div className="ml-auto text-slate-400 italic">
+                            Ajustez les curseurs pour aligner les îles avec les points verts.
+                        </div>
                     </div>
 
-                    <div className="flex-1 bg-black relative overflow-hidden" 
+                    <div className="flex-1 bg-black overflow-hidden relative" 
                          onWheel={handleWheel} 
-                         onMouseDown={handleMouseDown} 
-                         onMouseMove={handleMouseMove} 
-                         onMouseUp={handleMouseUp} 
-                         onMouseLeave={handleMouseUp}>
+                         onMouseDown={(e) => { isDragging.current = true; lastMousePos.current = { x: e.clientX, y: e.clientY }; }}
+                         onMouseMove={handleMouseMove}
+                         onMouseUp={() => isDragging.current = false}>
                         
                         <svg viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`} className="w-full h-full">
-                            <image href="./fond_ocean24.jpg" x={minX} y={minY} width="100" height="100" preserveAspectRatio="none" />
+                            {/* IMAGE DE FOND AVEC SES PARAMÈTRES DE CALIBRAGE */}
+                            <image 
+                                href="./fond_ocean24.jpg" 
+                                x={imgConfig.x} 
+                                y={imgConfig.y} 
+                                width={imgConfig.w} 
+                                height={imgConfig.h} 
+                                preserveAspectRatio="none" 
+                            />
                             
-                            {gridElements}
+                            {/* Grille fixe de l'Océan 24 */}
+                            {[...Array(11)].map((_, i) => (
+                                <React.Fragment key={i}>
+                                    <line x1={200 + i * 10} y1={400} x2={200 + i * 10} y2={500} className="subdivision-line" />
+                                    <line x1={200} y1={400 + i * 10} x2={300} y2={400 + i * 10} className="subdivision-line" />
+                                    <text x={200 + i * 10 + 0.5} y={401.5} className="grid-label">{200 + i * 10}</text>
+                                </React.Fragment>
+                            ))}
 
                             {filteredTowns.map(town => (
-                                <g key={town.id} onMouseEnter={() => setHoveredTown(town)} onMouseLeave={() => setHoveredTown(null)}>
-                                    <circle cx={town.x} cy={town.y} r="0.8" fill="black" opacity="0.4" />
-                                    <circle cx={town.x} cy={town.y} r="0.6" className="city-marker" />
-                                    
-                                    {hoveredTown?.id === town.id && (
-                                        <g pointerEvents="none">
-                                            <rect x={town.x + 1.2} y={town.y - 4.5} width="16" height="5.5" rx="0.4" className="tooltip-bg" />
-                                            <text x={town.x + 1.8} y={town.y - 2.8} className="tooltip-text">{town.name}</text>
-                                            <text x={town.x + 1.8} y={town.y - 1.2} className="tooltip-sub">{town.player_name} ({town.points} pts)</text>
-                                            <text x={town.x + 1.8} y={town.y + 0.2} className="tooltip-sub" style={{fontSize: '0.9px'}}>Coord: {town.x},{town.y}</text>
-                                        </g>
-                                    )}
-                                </g>
+                                <circle key={town.id} cx={town.x} cy={town.y} r="0.6" className="city-marker" />
                             ))}
                         </svg>
                     </div>
