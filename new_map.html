@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grepolis - Focus Océan 24 (Épuré)</title>
+    <title>Grepolis - Focus Océan 24 (Image)</title>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { margin: 0; background-color: #020617; color: white; font-family: sans-serif; overflow: hidden; }
-        .grid-label { font-size: 1px; fill: #475569; font-weight: bold; pointer-events: none; }
-        .ocean-bg { fill: #0f172a; }
-        .subdivision-line { stroke: #1e293b; stroke-width: 0.1; pointer-events: none; }
+        .grid-label { font-size: 1px; fill: #94a3b8; font-weight: bold; pointer-events: none; text-shadow: 0px 0px 2px black; }
+        /* .ocean-bg { fill: #0f172a; }  <-- SUPPRIMÉ CAR INUTILE AVEC L'IMAGE */
+        .subdivision-line { stroke: rgba(255, 255, 255, 0.3); stroke-width: 0.08; pointer-events: none; } /* Lignes un peu plus claires pour contraster avec l'image */
         .city-marker { 
             fill: #22c55e; 
             stroke: white; 
@@ -97,6 +97,7 @@
                 }
                 for (let ix = 0; ix <= 100; ix += 10) {
                     for (let iy = 0; iy <= 100; iy += 10) {
+                        // Ajout d'une petite ombre portée au texte pour qu'il reste lisible sur une image
                         elements.push(<text key={`l-${ix}-${iy}`} x={minX+ix+0.5} y={minY+iy+1.2} className="grid-label">{minX+ix},{minY+iy}</text>);
                     }
                 }
@@ -107,10 +108,10 @@
 
             return (
                 <div className="flex flex-col h-screen">
-                    <div className="p-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
+                    <div className="p-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between z-10 relative">
                         <div>
                             <h1 className="text-xl font-bold text-amber-500">Océan 24</h1>
-                            <p className="text-xs text-slate-500">Filtrage par joueur | Survol pour détails</p>
+                            <p className="text-xs text-slate-500">Fond : Image locale | Filtrage par joueur</p>
                         </div>
                         <input 
                             type="text" 
@@ -121,19 +122,38 @@
                     </div>
 
                     <div className="flex-1 bg-black relative">
-                        <svg viewBox={`${minX-1} ${minY-1} 103 103`} className="w-full h-full p-2">
-                            <rect x={minX} y={minY} width="100" height="100" className="ocean-bg" />
+                        {/* ViewBox ajusté pour éviter les bords coupés */}
+                        <svg viewBox={`${minX} ${minY} 100 100`} className="w-full h-full">
+                            
+                            {/* --- REMPLACEMENT DU FOND --- */}
+                            {/* Ancienne ligne (rectangle bleu) :
+                            <rect x={minX} y={minY} width="100" height="100" className="ocean-bg" /> 
+                            */}
+                            
+                            {/* Nouvelle ligne (Image de fond) : */}
+                            {/* Assurez-vous que le fichier s'appelle exactement ainsi et est dans le même dossier */}
+                            <image 
+                                href="./fond_ocean24.jpg" 
+                                x={minX} 
+                                y={minY} 
+                                width="100" 
+                                height="100" 
+                                preserveAspectRatio="none" // Force l'image à remplir exactement le carré 100x100
+                            />
+                            {/* --------------------------- */}
+
                             {gridElements}
 
                             {filteredTowns.map(town => (
                                 <g key={town.id} 
                                    onMouseEnter={() => setHoveredTown(town)}
                                    onMouseLeave={() => setHoveredTown(null)}>
+                                    {/* Ajout d'une petite ombre noire sous le point vert pour qu'il ressorte sur l'image */}
+                                    <circle cx={town.x} cy={town.y} r="0.8" fill="black" opacity="0.5" />
                                     <circle cx={town.x} cy={town.y} r="0.7" className="city-marker" />
                                     
                                     {hoveredTown?.id === town.id && (
-                                        <g pointerEvents="none">
-                                            {/* Petite étiquette d'info */}
+                                        <g pointerEvents="none" style={{zIndex: 50}}>
                                             <rect 
                                                 x={town.x + 1.5} y={town.y - 4} 
                                                 width="15" height="5" rx="0.5"
