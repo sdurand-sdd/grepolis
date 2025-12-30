@@ -3,232 +3,187 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grepolis FR39 - Carte Réaliste</title>
+    <title>Grepolis - Focus Océan 24</title>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { margin: 0; padding: 0; overflow: hidden; background-color: #0f172a; }
-        .ocean-bg { fill: #154360; } /* Bleu mer Grepolis */
-        .island-land { fill: #229954; opacity: 0.6; } /* Vert île */
+        body { margin: 0; background-color: #020617; color: white; font-family: sans-serif; }
+        .grid-label { font-size: 1.2px; fill: #64748b; font-weight: bold; }
+        .ocean-bg { fill: #0f172a; }
+        .subdivision-line { stroke: #1e293b; stroke-width: 0.1; }
+        .city-marker { fill: #22c55e; stroke: white; stroke-width: 0.2; }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useMemo } = React;
 
-        const GrepolisOceans = () => {
-            const [isFetching, setIsFetching] = useState(true);
-            const [cities, setCities] = useState([]);
-            const [alliances, setAlliances] = useState({});
+        const Ocean24Map = () => {
+            const [towns, setTowns] = useState([]);
             const [players, setPlayers] = useState({});
-            const [lastUpdate, setLastUpdate] = useState(null);
-            
-            const [selectedOcean, setSelectedOcean] = useState('24');
-            const [viewMode, setViewMode] = useState('ocean');
-            const [search, setSearch] = useState('');
-            const [selectedAlliance, setSelectedAlliance] = useState('all');
-            const [hoveredCity, setHoveredCity] = useState(null);
-            const [selectedCity, setSelectedCity] = useState(null);
-            const [customColors, setCustomColors] = useState({});
+            const [searchTerm, setSearchTerm] = useState("");
+            const [loading, setLoading] = useState(true);
 
-            // Couleurs par défaut
-            const generateColor = (index) => {
-                const colors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#f97316'];
-                return colors[index % colors.length];
-            };
+            // Coordonnées de l'Océan 24
+            const minX = 200, maxX = 299;
+            const minY = 400, maxY = 499;
 
-            const loadData = async () => {
-                setIsFetching(true);
-                try {
-                    // Chargement des fichiers
-                    const [alliancesRes, playersRes, townsRes, dateRes] = await Promise.all([
-                        fetch('./alliances.txt').then(r => r.text()),
-                        fetch('./players.txt').then(r => r.text()),
-                        fetch('./towns.txt').then(r => r.text()),
-                        fetch('./last_update.txt').then(r => r.text()).catch(() => "Date inconnue")
-                    ]);
+            useEffect(() => {
+                const fetchData = async () => {
+                    try {
+                        const [pRes, tRes] = await Promise.all([
+                            fetch('./players.txt').then(r => r.text()),
+                            fetch('./towns.txt').then(r => r.text())
+                        ]);
 
-                    const alliancesData = {};
-                    alliancesRes.split('\n').forEach(line => {
-                        const p = line.split(',');
-                        if (p.length >= 2) alliancesData[p[0]] = { id: p[0], name: p[1] };
-                    });
+                        const pData = {};
+                        pRes.split('\n').forEach(line => {
+                            const p = line.split(',');
+                            if (p.length >= 2) pData[p[0]] = p[1]; // ID -> Nom
+                        });
 
-                    const playersData = {};
-                    playersRes.split('\n').forEach(line => {
-                        const p = line.split(',');
-                        if (p.length >= 3) playersData[p[0]] = { id: p[0], name: p[1], alliance_id: p[2] };
-                    });
+                        const tData = [];
+                        tRes.split('\n').forEach(line => {
+                            const p = line.split(',');
+                            if (p.length >= 5) {
+                                const x = parseInt(p[3]);
+                                const y = parseInt(p[4]);
+                                // On ne garde que les villes de l'Océan 24
+                                if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
+                                    tData.push({
+                                        id: p[0],
+                                        player_id: p[1],
+                                        player_name: pData[p[1]] || "Inconnu",
+                                        name: p[2],
+                                        x: x,
+                                        y: y
+                                    });
+                                }
+                            }
+                        });
 
-                    const townsData = [];
-                    townsRes.split('\n').forEach(line => {
-                        const p = line.split(',');
-                        if (p.length >= 7) {
-                            const x = parseInt(p[3]);
-                            const y = parseInt(p[4]);
-                            const ocean = Math.floor(x / 100) * 10 + Math.floor(y / 100);
-                            const player = playersData[p[1]];
-                            const allianceId = player?.alliance_id;
-                            
-                            townsData.push({
-                                id: p[0],
-                                player_id: p[1],
-                                player_name: player?.name || 'Inconnu',
-                                name: p[2],
-                                x: x,
-                                y: y,
-                                island: p[5],
-                                points: p[6],
-                                alliance_name: (allianceId && alliancesData[allianceId]) ? alliancesData[allianceId].name : 'Sans alliance',
-                                ocean: ocean.toString().padStart(2, '0')
-                            });
-                        }
-                    });
+                        setPlayers(pData);
+                        setTowns(tData);
+                    } catch (err) {
+                        console.error("Erreur chargement:", err);
+                    } finally {
+                        setLoading(false);
+                    }
+                };
+                fetchData();
+            }, []);
 
-                    setAlliances(alliancesData);
-                    setPlayers(playersData);
-                    setCities(townsData);
-                    setLastUpdate(dateRes.trim());
-                } catch (e) {
-                    console.error("Erreur de chargement", e);
-                } finally {
-                    setIsFetching(false);
+            // Filtrer les villes selon le joueur recherché
+            const filteredTowns = useMemo(() => {
+                if (!searchTerm || searchTerm.length < 2) return [];
+                return towns.filter(t => 
+                    t.player_name.toLowerCase().includes(searchTerm.toLowerCase())
+                );
+            }, [searchTerm, towns]);
+
+            // Générer les lignes de la grille et les coordonnées aux angles
+            const gridElements = useMemo(() => {
+                const elements = [];
+                // Lignes verticales et horizontales tous les 10 points
+                for (let i = 0; i <= 100; i += 10) {
+                    const xCoord = minX + i;
+                    const yCoord = minY + i;
+
+                    // Lignes
+                    elements.push(<line key={`v-${i}`} x1={xCoord} y1={minY} x2={xCoord} y2={maxY+1} className="subdivision-line" />);
+                    elements.push(<line key={`h-${i}`} x1={minX} y1={yCoord} x2={maxX+1} y2={yCoord} className="subdivision-line" />);
                 }
-            };
 
-            useEffect(() => { loadData(); }, []);
+                // Coordonnées aux angles des subdivisions (chaque intersection)
+                for (let ix = 0; ix <= 100; ix += 10) {
+                    for (let iy = 0; iy <= 100; iy += 10) {
+                        const curX = minX + ix;
+                        const curY = minY + iy;
+                        elements.push(
+                            <text 
+                                key={`lbl-${curX}-${curY}`} 
+                                x={curX + 0.5} 
+                                y={curY + 1.5} 
+                                className="grid-label"
+                            >
+                                {curX},{curY}
+                            </text>
+                        );
+                    }
+                }
+                return elements;
+            }, []);
 
-            // Filtrage
-            const citiesInOcean = cities.filter(c => c.ocean === selectedOcean);
-            const uniqueAlliances = [...new Set(citiesInOcean.map(c => c.alliance_name))].sort();
-            const allianceColors = {};
-            uniqueAlliances.forEach((a, i) => allianceColors[a] = customColors[a] || generateColor(i));
-
-            const filteredCities = citiesInOcean.filter(c => {
-                const matchSearch = c.name.toLowerCase().includes(search.toLowerCase()) || c.player_name.toLowerCase().includes(search.toLowerCase());
-                const matchAlliance = selectedAlliance === 'all' || c.alliance_name === selectedAlliance;
-                return matchSearch && matchAlliance;
-            });
-
-            // Regroupement par île pour le dessin du relief
-            const islands = {};
-            filteredCities.forEach(c => {
-                if (!islands[c.island]) islands[c.island] = { x: c.x, y: c.y, towns: [] };
-                islands[c.island].towns.push(c);
-            });
-
-            const getOceanViewBox = (ocean) => {
-                const n = parseInt(ocean);
-                return `${Math.floor(n / 10) * 100} ${(n % 10) * 100} 100 100`;
-            };
-
-            if (isFetching) return <div className="h-screen bg-slate-900 flex items-center justify-center text-white">Chargement...</div>;
+            if (loading) return <div className="p-10 text-center">Chargement des données de l'Océan 24...</div>;
 
             return (
-                <div className="w-full h-screen flex flex-col bg-slate-900">
-                    {/* Header */}
-                    <div className="bg-slate-800 p-4 shadow-xl flex justify-between items-center">
+                <div className="flex flex-col h-screen">
+                    {/* Barre de recherche */}
+                    <div className="p-4 bg-slate-900 border-b border-slate-700 flex items-center justify-between">
                         <div>
-                            <h1 className="text-amber-400 font-bold text-xl">Océan {selectedOcean} - Grepolis</h1>
-                            <p className="text-slate-400 text-xs">MàJ : {lastUpdate}</p>
+                            <h1 className="text-xl font-bold text-amber-500">Océan 24</h1>
+                            <p className="text-xs text-slate-400">X: 200-299 | Y: 400-499</p>
                         </div>
-                        <div className="flex gap-4">
+                        <div className="flex flex-col items-end">
                             <input 
-                                type="text" placeholder="Rechercher..." 
-                                className="bg-slate-700 text-white px-3 py-1 rounded border border-slate-600 outline-none focus:border-amber-500"
-                                onChange={(e) => setSearch(e.target.value)}
+                                type="text" 
+                                placeholder="Entrez le nom d'un joueur..." 
+                                className="bg-slate-800 border border-slate-600 px-4 py-2 rounded-lg w-64 focus:border-amber-500 outline-none"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
                             />
-                            <select 
-                                className="bg-slate-700 text-white px-3 py-1 rounded border border-slate-600"
-                                onChange={(e) => setSelectedOcean(e.target.value)}
-                                value={selectedOcean}
-                            >
-                                {[...new Set(cities.map(c => c.ocean))].sort().map(o => <option key={o} value={o}>Mer {o}</option>)}
-                            </select>
+                            <span className="text-[10px] mt-1 text-slate-500">
+                                {searchTerm ? `${filteredTowns.length} ville(s) trouvée(s)` : "Entrez un nom pour afficher les villes"}
+                            </span>
                         </div>
                     </div>
 
-                    {/* Carte */}
-                    <div className="flex-1 overflow-hidden relative bg-slate-950">
-                        <svg viewBox={getOceanViewBox(selectedOcean)} className="w-full h-full">
-                            {/* Fond de l'océan */}
-                            <rect 
-                                x={Math.floor(parseInt(selectedOcean)/10)*100} 
-                                y={(parseInt(selectedOcean)%10)*100} 
-                                width="100" height="100" className="ocean-bg" 
-                            />
+                    {/* Carte SVG */}
+                    <div className="flex-1 bg-black overflow-hidden relative">
+                        <svg 
+                            viewBox={`${minX} ${minY} 101 101`} 
+                            className="w-full h-full p-4"
+                        >
+                            {/* Fond marin */}
+                            <rect x={minX} y={minY} width="100" height="100" className="ocean-bg" />
                             
-                            {/* Grille */}
-                            {(() => {
-                                const lines = [];
-                                const startX = Math.floor(parseInt(selectedOcean)/10)*100;
-                                const startY = (parseInt(selectedOcean)%10)*100;
-                                for(let i=0; i<=100; i+=20) {
-                                    lines.push(<line key={'v'+i} x1={startX+i} y1={startY} x2={startX+i} y2={startY+100} stroke="#ffffff22" strokeWidth="0.2" />);
-                                    lines.push(<line key={'h'+i} x1={startX} y1={startY+i} x2={startX+100} y2={startY+i} stroke="#ffffff22" strokeWidth="0.2" />);
-                                }
-                                return lines;
-                            })()}
+                            {/* Grille et Coordonnées */}
+                            {gridElements}
 
-                            {/* Îles (Relief Vert) */}
-                            {Object.entries(islands).map(([id, data]) => (
-                                <circle 
-                                    key={'isl-'+id} 
-                                    cx={data.x} cy={data.y} r="3.5" 
-                                    className="island-land" 
-                                />
-                            ))}
-
-                            {/* Villes (Positions Réelles) */}
-                            {filteredCities.map(city => (
-                                <g key={city.id} 
-                                   onMouseEnter={() => setHoveredCity(city)}
-                                   className="cursor-pointer"
-                                   onClick={() => setSelectedCity(city)}>
-                                    {/* Petit anneau style Grepolis */}
+                            {/* Villes du joueur recherché */}
+                            {filteredTowns.map(town => (
+                                <g key={town.id}>
                                     <circle 
-                                        cx={city.x} cy={city.y} r="0.8" 
-                                        fill="none" 
-                                        stroke={allianceColors[city.alliance_name]} 
-                                        strokeWidth="0.5"
+                                        cx={town.x} 
+                                        cy={town.y} 
+                                        r="0.8" 
+                                        className="city-marker"
                                     />
-                                    <circle 
-                                        cx={city.x} cy={city.y} r="0.3" 
-                                        fill={allianceColors[city.alliance_name]} 
-                                    />
+                                    <text 
+                                        x={town.x + 1} 
+                                        y={town.y - 1} 
+                                        style={{fontSize: '1.2px', fill: 'white'}}
+                                    >
+                                        {town.name}
+                                    </text>
                                 </g>
                             ))}
                         </svg>
-
-                        {/* Tooltip (Détails au survol) */}
-                        {hoveredCity && (
-                            <div className="absolute top-4 left-4 bg-slate-800 border border-amber-500 p-3 rounded text-white text-sm shadow-2xl pointer-events-none">
-                                <p className="font-bold text-amber-400">{hoveredCity.name}</p>
-                                <p>Joueur : {hoveredCity.player_name}</p>
-                                <p>Alliance : {hoveredCity.alliance_name}</p>
-                                <p>Coords : {hoveredCity.x}|{hoveredCity.y}</p>
-                            </div>
-                        )}
                     </div>
 
-                    {/* Footer / Légende */}
-                    <div className="bg-slate-800 p-2 text-xs text-slate-400 flex justify-center gap-4 border-t border-slate-700">
-                        {uniqueAlliances.slice(0, 8).map(a => (
-                            <div key={a} className="flex items-center gap-1">
-                                <div className="w-2 h-2 rounded-full" style={{backgroundColor: allianceColors[a]}}></div>
-                                {a}
-                            </div>
-                        ))}
+                    {/* Légende rapide */}
+                    <div className="p-2 bg-slate-900 text-[10px] text-slate-500 text-center border-t border-slate-800">
+                        Chaque carré représente une zone de 10x10. Les coordonnées affichées sont les points d'ancrage (min/max) de la grille.
                     </div>
                 </div>
             );
         };
 
-        ReactDOM.render(<GrepolisOceans />, document.getElementById('root'));
+        ReactDOM.render(<Ocean24Map />, document.getElementById('root'));
     </script>
 </body>
 </html>
