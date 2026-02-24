@@ -169,53 +169,46 @@
                                                                     <div>🏘️ {selectedData.towns_count} villes</div>
                                                                     <div>📊 {selectedData.points.toLocaleString()} pts</div>
                                                                 </div>
-                                                                
-                                                                {/* CALCULS AVANCE / RETARD */}
-                                                                <div className="pt-2 border-t border-slate-800 space-y-1">
-                                                                    {rank === 1 ? (
-                                                                        <>
-                                                                            <div className="text-green-400 flex justify-between">
-                                                                                <span>Avance points :</span> <span>+{(selectedData.points - (top2?.points || 0)).toLocaleString()} pts</span>
-                                                                            </div>
-                                                                            <div className="text-green-400 flex justify-between font-bold">
-                                                                                <span>Avance villes :</span> <span>+{(selectedData.towns_count - (top2?.towns_count || 0))} villes</span>
-                                                                            </div>
-                                                                        </>
-                                                                    ) : (
-                                                                        <>
-                                                                            <div className="text-red-400 flex justify-between">
-                                                                                <span>Retard points :</span> <span>{(selectedData.points - top1.points).toLocaleString()} pts</span>
-                                                                            </div>
-                                                                            <div className="text-red-400 flex justify-between font-bold">
-                                                                                <span>Retard villes :</span> <span>{(selectedData.towns_count - top1.towns_count)} villes</span>
-                                                                            </div>
-                                                                        </>
-                                                                    )}
-                                                                </div>
+                                                              {/* CALCULS AVANCE / RETARD CORRIGÉS */}
+                                                <div className="pt-2 border-t border-slate-800 space-y-1">
+                                                    {rank === 1 ? (
+                                                        <>
+                                                            {/* Cas où on est n°1 aux points : on compare au n°2 pour l'avance */}
+                                                            <div className="text-green-400 flex justify-between">
+                                                                <span>Avance points :</span> <span>+{(selectedData.points - (top2?.points || 0)).toLocaleString()} pts</span>
                                                             </div>
-                                                        ) : <div className="text-slate-500 italic">Aucune présence</div>}
-
-                                                        <div className="pt-2 border-t border-slate-800">
-                                                            <div className="text-[10px] text-slate-500 font-bold mb-1">TOP 3 OCÉAN</div>
-                                                            {ranking.slice(0, 3).map((a, idx) => (
-                                                                <div key={a.alliance_id} className={`flex justify-between ${a.alliance_id === selectedAlliance ? 'text-amber-400 font-bold' : 'text-slate-400'}`}>
-                                                                    <span className="truncate w-32">#{idx+1} {a.alliance_name}</span>
-                                                                    <span>{a.towns_count} v.</span>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    </div>
+                                                            <div className={`flex justify-between font-bold ${(selectedData.towns_count - (top2?.towns_count || 0)) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                                <span>{(selectedData.towns_count - (top2?.towns_count || 0)) >= 0 ? 'Avance villes :' : 'Retard villes :'}</span> 
+                                                                <span>{(selectedData.towns_count - (top2?.towns_count || 0)) >= 0 ? '+' : ''}{(selectedData.towns_count - (top2?.towns_count || 0))} villes</span>
+                                                            </div>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            {/* Cas où on n'est pas n°1 aux points : on compare au n°1 (top1) */}
+                                                            <div className="text-red-400 flex justify-between">
+                                                                <span>Retard points :</span> <span>{(selectedData.points - top1.points).toLocaleString()} pts</span>
+                                                            </div>
+                                                            <div className={`flex justify-between font-bold ${(selectedData.towns_count - top1.towns_count) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                                <span>{(selectedData.towns_count - top1.towns_count) >= 0 ? 'Avance villes :' : 'Retard villes :'}</span> 
+                                                                <span>{(selectedData.towns_count - top1.towns_count) >= 0 ? '+' : ''}{(selectedData.towns_count - top1.towns_count)} villes</span>
+                                                            </div>
+                                                        </>
+                                                    )}
                                                 </div>
                                             </div>
-                                        );
-                                    })}
+                                        ) : <div className="text-slate-500 italic">Aucune présence</div>}
+
+                                        <div className="pt-2 border-t border-slate-800">
+                                            <div className="text-[10px] text-slate-500 font-bold mb-1">TOP 3 OCÉAN</div>
+                                            {ranking.slice(0, 3).map((a, idx) => (
+                                                <div key={a.alliance_id} className={`flex justify-between ${a.alliance_id === selectedAlliance ? 'text-amber-400 font-bold' : 'text-slate-400'}`}>
+                                                    <span className="truncate w-32">#{idx+1} {a.alliance_name}</span>
+                                                    <span>{a.towns_count} v.</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            );
-        };
 
         ReactDOM.render(<OceanDomination />, document.getElementById('root'));
     </script>
