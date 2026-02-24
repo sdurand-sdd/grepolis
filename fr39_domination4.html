@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grepolis - Domination (Fusion Finale)</title>
+    <title>Grepolis - Domination (Fusion & Indicateurs)</title>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
@@ -18,6 +18,7 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
+        // CONFIGURATION
         const MERE_ID = "4629";
         const WING_ID = "15359";
         const FUSION_ID = "999999";
@@ -25,7 +26,6 @@
 
         const OceanDomination = () => {
             const [loading, setLoading] = useState(false);
-            const [loadingMessage, setLoadingMessage] = useState('');
             const [alliances, setAlliances] = useState({});
             const [players, setPlayers] = useState({});
             const [towns, setTowns] = useState([]);
@@ -46,87 +46,71 @@
                     const dateResponse = await fetch(GITHUB_URLS.lastUpdate);
                     if (dateResponse.ok) { const dateText = await dateResponse.text(); setLastUpdate(dateText.trim()); }
 
-                    const alliancesResponse = await fetch(GITHUB_URLS.alliances);
-                    const alliancesText = await alliancesResponse.text();
+                    const [allRes, plRes, twRes] = await Promise.all([
+                        fetch(GITHUB_URLS.alliances).then(r => r.text()),
+                        fetch(GITHUB_URLS.players).then(r => r.text()),
+                        fetch(GITHUB_URLS.towns).then(r => r.text())
+                    ]);
+
                     const alliancesData = {};
-                    alliancesText.split('\n').forEach(line => {
+                    allRes.split('\n').forEach(line => {
                         if (line.trim()) {
-                            const parts = line.split(',');
-                            if (parts.length >= 2) {
-                                alliancesData[parts[0]] = {
-                                    id: parts[0],
-                                    name: decodeURIComponent(parts[1].replace(/\+/g, ' ')),
-                                    points: parseInt(parts[2]) || 0
-                                };
-                            }
+                            const p = line.split(',');
+                            alliancesData[p[0]] = { id: p[0], name: decodeURIComponent(p[1].replace(/\+/g, ' ')), points: parseInt(p[2]) || 0 };
                         }
                     });
-
                     if (alliancesData[MERE_ID] && alliancesData[WING_ID]) {
                         alliancesData[FUSION_ID] = { id: FUSION_ID, name: NOM_FUSION, points: alliancesData[MERE_ID].points + alliancesData[WING_ID].points };
                     }
                     setAlliances(alliancesData);
-                    setFilesLoaded(prev => ({ ...prev, alliances: true }));
 
-                    const playersResponse = await fetch(GITHUB_URLS.players);
-                    const playersText = await playersResponse.text();
                     const playersData = {};
-                    playersText.split('\n').forEach(line => {
+                    plRes.split('\n').forEach(line => {
                         if (line.trim()) {
-                            const parts = line.split(',');
-                            playersData[parts[0]] = { id: parts[0], name: decodeURIComponent(parts[1].replace(/\+/g, ' ')), alliance_id: parts[2] || null };
+                            const p = line.split(',');
+                            playersData[p[0]] = { id: p[0], name: decodeURIComponent(p[1].replace(/\+/g, ' ')), alliance_id: p[2] || null };
                         }
                     });
                     setPlayers(playersData);
-                    setFilesLoaded(prev => ({ ...prev, players: true }));
 
-                    const townsResponse = await fetch(GITHUB_URLS.towns);
-                    const townsText = await townsResponse.text();
                     const townsData = [];
-                    townsText.split('\n').forEach(line => {
+                    twRes.split('\n').forEach(line => {
                         if (line.trim()) {
-                            const parts = line.split(',');
-                            if (parts.length >= 7) {
-                                const x = parseInt(parts[3]), y = parseInt(parts[4]);
-                                townsData.push({ id: parts[0], player_id: parts[1], x, y, points: parseInt(parts[6]) || 0, ocean: Math.floor(x / 100) * 10 + Math.floor(y / 100) });
+                            const p = line.split(',');
+                            if (p.length >= 7) {
+                                const x = parseInt(p[3]), y = parseInt(p[4]);
+                                townsData.push({ id: p[0], player_id: p[1], points: parseInt(p[6]) || 0, ocean: Math.floor(x / 100) * 10 + Math.floor(y / 100) });
                             }
                         }
                     });
                     setTowns(townsData);
-                    setFilesLoaded(prev => ({ ...prev, towns: true }));
+                    setFilesLoaded({ alliances: true, players: true, towns: true });
                 } catch (error) { alert(`Erreur: ${error.message}`); }
-                finally { setLoading(false); setLoadingMessage(''); }
+                finally { setLoading(false); }
             };
 
             useEffect(() => { loadFromGitHub(); }, []);
 
-            const getOceanStats = () => {
-                const oceanStats = {};
+            const oceanStats = (() => {
+                const stats = {};
                 towns.forEach(town => {
                     const player = players[town.player_id];
-                    let allianceId = player?.alliance_id;
-                    if (!allianceId) return;
-                    let effectiveId = (allianceId === MERE_ID || allianceId === WING_ID) ? FUSION_ID : allianceId;
-                    if (!oceanStats[town.ocean]) oceanStats[town.ocean] = {};
-                    if (!oceanStats[town.ocean][effectiveId]) {
-                        oceanStats[town.ocean][effectiveId] = { alliance_id: effectiveId, alliance_name: alliances[effectiveId]?.name || 'Inconnu', towns_count: 0, points: 0 };
+                    let aId = player?.alliance_id;
+                    if (!aId) return;
+                    let effId = (aId === MERE_ID || aId === WING_ID) ? FUSION_ID : aId;
+                    if (!stats[town.ocean]) stats[town.ocean] = {};
+                    if (!stats[town.ocean][effId]) {
+                        stats[town.ocean][effId] = { alliance_id: effId, alliance_name: alliances[effId]?.name || 'Inconnu', towns_count: 0, points: 0 };
                     }
-                    oceanStats[town.ocean][effectiveId].towns_count++;
-                    oceanStats[town.ocean][effectiveId].points += town.points;
+                    stats[town.ocean][effId].towns_count++;
+                    stats[town.ocean][effId].points += town.points;
                 });
-                return oceanStats;
-            };
+                return stats;
+            })();
 
-            const oceanStats = getOceanStats();
+            const getRanking = (ocean) => Object.values(oceanStats[ocean] || {}).sort((a, b) => b.points - a.points);
 
-            const getOceanRanking = (ocean) => {
-                if (!oceanStats[ocean]) return [];
-                return Object.values(oceanStats[ocean]).sort((a, b) => b.points - a.points);
-            };
-
-            if (!filesLoaded.alliances || !filesLoaded.players || !filesLoaded.towns) {
-                return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-amber-400">Chargement...</div>;
-            }
+            if (!filesLoaded.alliances) return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-amber-400">Chargement...</div>;
 
             return (
                 <div className="w-full min-h-screen bg-slate-900 p-8 text-slate-200">
@@ -134,14 +118,13 @@
                         <div className="flex justify-between items-center mb-8">
                             <div>
                                 <h1 className="text-3xl font-bold text-amber-400">Domination des Océans - Grepolis</h1>
-                                <p className="text-slate-400 mt-1 text-sm">📅 Données du : <span className="text-green-400 font-mono">{lastUpdate}</span></p>
+                                <p className="text-slate-400 mt-1">📅 Mise à jour : <span className="text-green-400 font-mono">{lastUpdate}</span></p>
                             </div>
-                            <button onClick={loadFromGitHub} className="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg text-sm transition-all">🔄 Actualiser</button>
+                            <button onClick={loadFromGitHub} className="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg transition-all">🔄 Actualiser</button>
                         </div>
 
                         <div className="bg-slate-800 p-4 rounded-xl mb-8 border border-slate-700">
-                            <label className="block text-sm font-medium mb-2 text-slate-300">Sélectionner une alliance pour analyser sa domination :</label>
-                            <select value={selectedAlliance} onChange={(e) => setSelectedAlliance(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-amber-500 outline-none">
+                            <select value={selectedAlliance} onChange={(e) => setSelectedAlliance(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 outline-none">
                                 <option value="">-- Choisir une alliance --</option>
                                 {Object.values(alliances).sort((a, b) => a.name.localeCompare(b.name)).map(a => (
                                     <option key={a.id} value={a.id} className={a.id === FUSION_ID ? "text-amber-400 font-bold" : ""}>{a.name}</option>
@@ -150,65 +133,74 @@
                         </div>
 
                         {selectedAlliance && (
-                            <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-2xl">
+                            <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700">
                                 <h2 className="text-xl font-semibold text-center mb-6 text-amber-400">Carte : {alliances[selectedAlliance]?.name}</h2>
                                 <div className="grid grid-cols-10 gap-1.5 max-w-4xl mx-auto">
                                     {Array.from({ length: 100 }, (_, i) => {
                                         const ocean = (i % 10) * 10 + Math.floor(i / 10);
-                                        const ranking = getOceanRanking(ocean);
+                                        const ranking = getRanking(ocean);
                                         const top1 = ranking[0];
+                                        const top2 = ranking[1];
                                         const selectedData = ranking.find(r => r.alliance_id === selectedAlliance);
                                         const rank = selectedData ? ranking.indexOf(selectedData) + 1 : null;
 
                                         let color = "bg-slate-700 opacity-30";
-                                        if (rank === 1) color = "bg-green-600 shadow-inner";
+                                        if (rank === 1) color = "bg-green-600";
                                         else if (rank === 2) color = "bg-yellow-600";
                                         else if (rank === 3) color = "bg-orange-600";
                                         else if (rank > 3) color = "bg-red-700";
 
                                         return (
-                                            <div key={ocean} className={`${color} aspect-square rounded-md flex flex-col items-center justify-center relative group cursor-help transition-all hover:scale-110 border border-black/20`}>
+                                            <div key={ocean} className={`${color} aspect-square rounded-md flex flex-col items-center justify-center relative group cursor-help border border-black/20`}>
                                                 <span className="text-[10px] font-bold text-white/90">{ocean.toString().padStart(2, '0')}</span>
-                                                {rank && <span className="text-[9px] font-black text-black/50">#{rank}</span>}
+                                                {rank && <span className="text-[9px] font-black text-black/40">#{rank}</span>}
 
-                                                {/* TOOLTIP CORRIGÉ */}
-                                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 hidden group-hover:block z-50 w-72 pointer-events-none">
+                                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 hidden group-hover:block z-50 w-72">
                                                     <div className="bg-slate-950 border border-slate-700 p-4 rounded-xl shadow-2xl text-xs space-y-3">
-                                                        <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-                                                            <span className="text-amber-400 font-bold text-sm">Océan {ocean.toString().padStart(2, '0')}</span>
-                                                            {rank && <span className="bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded text-[10px]">Rang #{rank}</span>}
+                                                        <div className="flex justify-between border-b border-slate-800 pb-2">
+                                                            <span className="text-amber-400 font-bold">Océan {ocean.toString().padStart(2, '0')}</span>
+                                                            {rank && <span className="text-slate-400 font-bold">Rang #{rank}</span>}
                                                         </div>
                                                         
                                                         {selectedData ? (
-                                                            <div className="space-y-2">
-                                                                <div className="text-white font-medium">{alliances[selectedAlliance]?.name}</div>
-                                                                <div className="grid grid-cols-2 gap-2 text-slate-400">
+                                                            <div className="space-y-1">
+                                                                <div className="font-bold text-white mb-1">{alliances[selectedAlliance]?.name}</div>
+                                                                <div className="grid grid-cols-2 text-slate-400 mb-2">
                                                                     <div>🏘️ {selectedData.towns_count} villes</div>
                                                                     <div>📊 {selectedData.points.toLocaleString()} pts</div>
                                                                 </div>
                                                                 
-                                                                {rank !== 1 && top1 && (
-                                                                    <div className="pt-1 space-y-1 border-t border-slate-800">
-                                                                        <div className="text-red-400 flex justify-between"><span>Retard points:</span> <span>{(selectedData.points - top1.points).toLocaleString()} pts</span></div>
-                                                                        <div className={`${selectedData.towns_count >= top1.towns_count ? 'text-green-400' : 'text-red-400'} flex justify-between`}>
-                                                                            <span>Diff. villes:</span> <span>{selectedData.towns_count >= top1.towns_count ? '+' : ''}{selectedData.towns_count - top1.towns_count}</span>
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-                                                                {rank === 1 && ranking[1] && (
-                                                                     <div className="pt-1 space-y-1 border-t border-slate-800">
-                                                                        <div className="text-green-400 flex justify-between"><span>Avance points:</span> <span>+{(selectedData.points - ranking[1].points).toLocaleString()} pts</span></div>
-                                                                    </div>
-                                                                )}
+                                                                {/* CALCULS AVANCE / RETARD */}
+                                                                <div className="pt-2 border-t border-slate-800 space-y-1">
+                                                                    {rank === 1 ? (
+                                                                        <>
+                                                                            <div className="text-green-400 flex justify-between">
+                                                                                <span>Avance points :</span> <span>+{(selectedData.points - (top2?.points || 0)).toLocaleString()} pts</span>
+                                                                            </div>
+                                                                            <div className="text-green-400 flex justify-between font-bold">
+                                                                                <span>Avance villes :</span> <span>+{(selectedData.towns_count - (top2?.towns_count || 0))} villes</span>
+                                                                            </div>
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            <div className="text-red-400 flex justify-between">
+                                                                                <span>Retard points :</span> <span>{(selectedData.points - top1.points).toLocaleString()} pts</span>
+                                                                            </div>
+                                                                            <div className="text-red-400 flex justify-between font-bold">
+                                                                                <span>Retard villes :</span> <span>{(selectedData.towns_count - top1.towns_count)} villes</span>
+                                                                            </div>
+                                                                        </>
+                                                                    )}
+                                                                </div>
                                                             </div>
-                                                        ) : <div className="text-slate-500 italic">Aucune présence dans cet océan</div>}
+                                                        ) : <div className="text-slate-500 italic">Aucune présence</div>}
 
-                                                        <div className="pt-2 border-t border-slate-800 space-y-1.5">
-                                                            <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Top 3 de l'Océan</div>
+                                                        <div className="pt-2 border-t border-slate-800">
+                                                            <div className="text-[10px] text-slate-500 font-bold mb-1">TOP 3 OCÉAN</div>
                                                             {ranking.slice(0, 3).map((a, idx) => (
-                                                                <div key={a.alliance_id} className={`flex justify-between items-center ${a.alliance_id === selectedAlliance ? 'text-amber-400' : 'text-slate-400'}`}>
+                                                                <div key={a.alliance_id} className={`flex justify-between ${a.alliance_id === selectedAlliance ? 'text-amber-400 font-bold' : 'text-slate-400'}`}>
                                                                     <span className="truncate w-32">#{idx+1} {a.alliance_name}</span>
-                                                                    <span className="font-mono text-[10px]">{a.points.toLocaleString()} pts</span>
+                                                                    <span>{a.towns_count} v.</span>
                                                                 </div>
                                                             ))}
                                                         </div>
