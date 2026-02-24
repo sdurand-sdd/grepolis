@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grepolis - Domination (Mère + Wing)</title>
+    <title>Grepolis - Domination (Fusion Finale)</title>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
@@ -18,7 +18,6 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        // CONFIGURATION DES ALLIANCES A FUSIONNER
         const MERE_ID = "4629";
         const WING_ID = "15359";
         const FUSION_ID = "999999";
@@ -31,14 +30,9 @@
             const [players, setPlayers] = useState({});
             const [towns, setTowns] = useState([]);
             const [selectedAlliance, setSelectedAlliance] = useState('');
-            const [filesLoaded, setFilesLoaded] = useState({
-                alliances: false,
-                players: false,
-                towns: false
-            });
+            const [filesLoaded, setFilesLoaded] = useState({ alliances: false, players: false, towns: false });
             const [lastUpdate, setLastUpdate] = useState(null);
 
-            // URLs GitHub
             const GITHUB_URLS = {
                 alliances: 'https://sdurand-sdd.github.io/grepolis/alliances.txt',
                 players: 'https://sdurand-sdd.github.io/grepolis/players.txt',
@@ -46,29 +40,14 @@
                 lastUpdate: 'https://sdurand-sdd.github.io/grepolis/last_update.txt'
             };
 
-            // Vérifier si les données sont fraîches (moins de 48h)
-            // Note: Comme on utilise maintenant un fichier texte pour la date, 
-            // la vérification "isFresh" dépendra de la validité de la date écrite dedans.
-            const isDataFresh = () => true; 
-
-            // Fonction pour charger depuis GitHub
             const loadFromGitHub = async () => {
                 setLoading(true);
-                
                 try {
-                    // 1. Charger la date depuis last_update.txt
-                    setLoadingMessage('Chargement de la date...');
                     const dateResponse = await fetch(GITHUB_URLS.lastUpdate);
-                    if (dateResponse.ok) {
-                        const dateText = await dateResponse.text();
-                        setLastUpdate(dateText.trim());
-                    }
+                    if (dateResponse.ok) { const dateText = await dateResponse.text(); setLastUpdate(dateText.trim()); }
 
-                    // 2. Charger alliances
-                    setLoadingMessage('Chargement des alliances...');
                     const alliancesResponse = await fetch(GITHUB_URLS.alliances);
                     const alliancesText = await alliancesResponse.text();
-                    
                     const alliancesData = {};
                     alliancesText.split('\n').forEach(line => {
                         if (line.trim()) {
@@ -83,115 +62,58 @@
                         }
                     });
 
-                    // AJOUT DE LA LOGIQUE DE FUSION
                     if (alliancesData[MERE_ID] && alliancesData[WING_ID]) {
-                        alliancesData[FUSION_ID] = {
-                            id: FUSION_ID,
-                            name: NOM_FUSION,
-                            points: alliancesData[MERE_ID].points + alliancesData[WING_ID].points,
-                            isFusion: true
-                        };
+                        alliancesData[FUSION_ID] = { id: FUSION_ID, name: NOM_FUSION, points: alliancesData[MERE_ID].points + alliancesData[WING_ID].points };
                     }
-
                     setAlliances(alliancesData);
                     setFilesLoaded(prev => ({ ...prev, alliances: true }));
 
-                    // 3. Charger players
-                    setLoadingMessage('Chargement des joueurs...');
                     const playersResponse = await fetch(GITHUB_URLS.players);
                     const playersText = await playersResponse.text();
-                    
                     const playersData = {};
                     playersText.split('\n').forEach(line => {
                         if (line.trim()) {
                             const parts = line.split(',');
-                            if (parts.length >= 2) {
-                                playersData[parts[0]] = {
-                                    id: parts[0],
-                                    name: decodeURIComponent(parts[1].replace(/\+/g, ' ')),
-                                    alliance_id: parts[2] || null
-                                };
-                            }
+                            playersData[parts[0]] = { id: parts[0], name: decodeURIComponent(parts[1].replace(/\+/g, ' ')), alliance_id: parts[2] || null };
                         }
                     });
                     setPlayers(playersData);
                     setFilesLoaded(prev => ({ ...prev, players: true }));
 
-                    // 4. Charger towns
-                    setLoadingMessage('Chargement des villes...');
                     const townsResponse = await fetch(GITHUB_URLS.towns);
                     const townsText = await townsResponse.text();
-                    
                     const townsData = [];
                     townsText.split('\n').forEach(line => {
                         if (line.trim()) {
                             const parts = line.split(',');
                             if (parts.length >= 7) {
-                                const x = parseInt(parts[3]);
-                                const y = parseInt(parts[4]);
-                                const oceanX = Math.floor(x / 100);
-                                const oceanY = Math.floor(y / 100);
-                                const ocean = oceanX * 10 + oceanY;
-                                
-                                townsData.push({
-                                    id: parts[0],
-                                    player_id: parts[1],
-                                    x: x,
-                                    y: y,
-                                    points: parseInt(parts[6]) || 0,
-                                    ocean: ocean
-                                });
+                                const x = parseInt(parts[3]), y = parseInt(parts[4]);
+                                townsData.push({ id: parts[0], player_id: parts[1], x, y, points: parseInt(parts[6]) || 0, ocean: Math.floor(x / 100) * 10 + Math.floor(y / 100) });
                             }
                         }
                     });
                     setTowns(townsData);
                     setFilesLoaded(prev => ({ ...prev, towns: true }));
-
-                } catch (error) {
-                    alert(`Erreur de chargement: ${error.message}`);
-                } finally {
-                    setLoading(false);
-                    setLoadingMessage('');
-                }
+                } catch (error) { alert(`Erreur: ${error.message}`); }
+                finally { setLoading(false); setLoadingMessage(''); }
             };
 
-            useEffect(() => {
-                loadFromGitHub();
-            }, []);
+            useEffect(() => { loadFromGitHub(); }, []);
 
-            // Calculer les stats par océan AVEC FUSION LOGIQUE
             const getOceanStats = () => {
                 const oceanStats = {};
-
                 towns.forEach(town => {
                     const player = players[town.player_id];
                     let allianceId = player?.alliance_id;
-                    
                     if (!allianceId) return;
-
-                    // Si le joueur est dans la mère ou la wing, on le compte dans la fusion
-                    let effectiveId = allianceId;
-                    if (allianceId === MERE_ID || allianceId === WING_ID) {
-                        effectiveId = FUSION_ID;
-                    }
-
-                    if (!oceanStats[town.ocean]) {
-                        oceanStats[town.ocean] = {};
-                    }
-
+                    let effectiveId = (allianceId === MERE_ID || allianceId === WING_ID) ? FUSION_ID : allianceId;
+                    if (!oceanStats[town.ocean]) oceanStats[town.ocean] = {};
                     if (!oceanStats[town.ocean][effectiveId]) {
-                        oceanStats[town.ocean][effectiveId] = {
-                            alliance_id: effectiveId,
-                            alliance_name: alliances[effectiveId]?.name || 'Inconnu',
-                            towns_count: 0,
-                            points: 0
-                        };
+                        oceanStats[town.ocean][effectiveId] = { alliance_id: effectiveId, alliance_name: alliances[effectiveId]?.name || 'Inconnu', towns_count: 0, points: 0 };
                     }
-
                     oceanStats[town.ocean][effectiveId].towns_count++;
                     oceanStats[town.ocean][effectiveId].points += town.points;
                 });
-
                 return oceanStats;
             };
 
@@ -199,114 +121,97 @@
 
             const getOceanRanking = (ocean) => {
                 if (!oceanStats[ocean]) return [];
-                return Object.values(oceanStats[ocean])
-                    .sort((a, b) => b.points - a.points || b.towns_count - a.towns_count);
+                return Object.values(oceanStats[ocean]).sort((a, b) => b.points - a.points);
             };
 
-            const alliancesList = Object.values(alliances).sort((a, b) => 
-                a.name.localeCompare(b.name)
-            );
-
             if (!filesLoaded.alliances || !filesLoaded.players || !filesLoaded.towns) {
-                return (
-                    <div className="w-full min-h-screen bg-slate-900 flex items-center justify-center">
-                        <div className="text-center">
-                            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-amber-400 mx-auto mb-4"></div>
-                            <p className="text-slate-300">{loadingMessage || 'Initialisation...'}</p>
-                        </div>
-                    </div>
-                );
+                return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-amber-400">Chargement...</div>;
             }
 
             return (
-                <div className="w-full min-h-screen bg-slate-900 p-8">
+                <div className="w-full min-h-screen bg-slate-900 p-8 text-slate-200">
                     <div className="max-w-7xl mx-auto">
-                        <div className="flex justify-between items-start mb-6">
+                        <div className="flex justify-between items-center mb-8">
                             <div>
-                                <h1 className="text-3xl font-bold text-amber-400">
-                                    Domination des Océans - Grepolis
-                                </h1>
-                                {lastUpdate && (
-                                    <div className="mt-2 flex items-center gap-2">
-                                        <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                                        <span className="text-slate-400 text-sm">
-                                            📅 Mise à jour : {lastUpdate}
-                                        </span>
-                                    </div>
-                                )}
+                                <h1 className="text-3xl font-bold text-amber-400">Domination des Océans - Grepolis</h1>
+                                <p className="text-slate-400 mt-1 text-sm">📅 Données du : <span className="text-green-400 font-mono">{lastUpdate}</span></p>
                             </div>
-                            <button onClick={loadFromGitHub} className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm text-white">
-                                🔄 Actualiser
-                            </button>
+                            <button onClick={loadFromGitHub} className="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg text-sm transition-all">🔄 Actualiser</button>
                         </div>
 
-                        <div className="bg-slate-800 p-4 rounded-lg mb-6">
-                            <label className="block mb-2 text-white font-medium">Choisir une alliance (Individuelle ou Groupe Global) :</label>
-                            <select
-                                value={selectedAlliance}
-                                onChange={(e) => setSelectedAlliance(e.target.value)}
-                                className="w-full px-4 py-2 bg-slate-700 text-white rounded-lg border border-slate-600"
-                            >
-                                <option value="">-- Sélectionnez une alliance --</option>
-                                {alliancesList.map(alliance => (
-                                    <option key={alliance.id} value={alliance.id} className={alliance.id === FUSION_ID ? "font-bold text-amber-400" : ""}>
-                                        {alliance.name} {alliance.id === FUSION_ID ? "⭐" : ""}
-                                    </option>
+                        <div className="bg-slate-800 p-4 rounded-xl mb-8 border border-slate-700">
+                            <label className="block text-sm font-medium mb-2 text-slate-300">Sélectionner une alliance pour analyser sa domination :</label>
+                            <select value={selectedAlliance} onChange={(e) => setSelectedAlliance(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-amber-500 outline-none">
+                                <option value="">-- Choisir une alliance --</option>
+                                {Object.values(alliances).sort((a, b) => a.name.localeCompare(b.name)).map(a => (
+                                    <option key={a.id} value={a.id} className={a.id === FUSION_ID ? "text-amber-400 font-bold" : ""}>{a.name}</option>
                                 ))}
                             </select>
                         </div>
 
                         {selectedAlliance && (
-                            <div className="bg-slate-800 p-6 rounded-lg">
-                                <h2 className="text-xl font-bold text-amber-400 mb-4 text-center">
-                                    Carte de domination : {alliances[selectedAlliance]?.name}
-                                </h2>
-                                
-                                <div className="grid grid-cols-10 gap-1 max-w-5xl mx-auto">
+                            <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-2xl">
+                                <h2 className="text-xl font-semibold text-center mb-6 text-amber-400">Carte : {alliances[selectedAlliance]?.name}</h2>
+                                <div className="grid grid-cols-10 gap-1.5 max-w-4xl mx-auto">
                                     {Array.from({ length: 100 }, (_, i) => {
-                                        const oceanY = Math.floor(i / 10);
-                                        const oceanX = i % 10;
-                                        const ocean = oceanX * 10 + oceanY;
-                                        
+                                        const ocean = (i % 10) * 10 + Math.floor(i / 10);
                                         const ranking = getOceanRanking(ocean);
                                         const top1 = ranking[0];
-                                        const top2 = ranking[1];
-                                        
                                         const selectedData = ranking.find(r => r.alliance_id === selectedAlliance);
-                                        const selectedRank = selectedData ? ranking.indexOf(selectedData) + 1 : null;
-                                        const isTop1 = selectedRank === 1;
-                                        const hasPresence = selectedData !== undefined;
+                                        const rank = selectedData ? ranking.indexOf(selectedData) + 1 : null;
 
-                                        let bgColor = 'bg-slate-700';
-                                        if (hasPresence) {
-                                            if (isTop1) bgColor = 'bg-green-600';
-                                            else if (selectedRank === 2) bgColor = 'bg-yellow-600';
-                                            else if (selectedRank === 3) bgColor = 'bg-orange-600';
-                                            else bgColor = 'bg-red-700';
-                                        }
+                                        let color = "bg-slate-700 opacity-30";
+                                        if (rank === 1) color = "bg-green-600 shadow-inner";
+                                        else if (rank === 2) color = "bg-yellow-600";
+                                        else if (rank === 3) color = "bg-orange-600";
+                                        else if (rank > 3) color = "bg-red-700";
 
                                         return (
-                                            <div key={ocean} className={`${bgColor} aspect-square flex flex-col items-center justify-center rounded cursor-pointer hover:opacity-80 transition-opacity relative group border border-slate-600`}>
-                                                <div className="text-xs font-bold text-white">{ocean.toString().padStart(2, '0')}</div>
-                                                {hasPresence && <div className="text-[10px] text-white opacity-80">#{selectedRank}</div>}
+                                            <div key={ocean} className={`${color} aspect-square rounded-md flex flex-col items-center justify-center relative group cursor-help transition-all hover:scale-110 border border-black/20`}>
+                                                <span className="text-[10px] font-bold text-white/90">{ocean.toString().padStart(2, '0')}</span>
+                                                {rank && <span className="text-[9px] font-black text-black/50">#{rank}</span>}
 
-                                                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block z-10 w-64">
-                                                    <div className="bg-slate-900 text-white p-3 rounded-lg shadow-xl border border-slate-600 text-xs">
-                                                        <div className="font-bold text-amber-400 mb-1 text-sm">Océan {ocean.toString().padStart(2, '0')}</div>
-                                                        {hasPresence ? (
-                                                            <>
-                                                                <div className="mb-2 font-semibold text-green-400">{isTop1 ? "👑 Dominant" : `Rang #${selectedRank}`}</div>
-                                                                <div className="space-y-1">
-                                                                    <div>Villes : {selectedData.towns_count}</div>
-                                                                    <div>Points : {selectedData.points.toLocaleString()}</div>
-                                                                    {top1 && !isTop1 && (
-                                                                        <div className="text-red-400 pt-1 border-t border-slate-700">
-                                                                            Retard points : {(selectedData.points - top1.points).toLocaleString()}
-                                                                        </div>
-                                                                    )}
+                                                {/* TOOLTIP CORRIGÉ */}
+                                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 hidden group-hover:block z-50 w-72 pointer-events-none">
+                                                    <div className="bg-slate-950 border border-slate-700 p-4 rounded-xl shadow-2xl text-xs space-y-3">
+                                                        <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                                                            <span className="text-amber-400 font-bold text-sm">Océan {ocean.toString().padStart(2, '0')}</span>
+                                                            {rank && <span className="bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded text-[10px]">Rang #{rank}</span>}
+                                                        </div>
+                                                        
+                                                        {selectedData ? (
+                                                            <div className="space-y-2">
+                                                                <div className="text-white font-medium">{alliances[selectedAlliance]?.name}</div>
+                                                                <div className="grid grid-cols-2 gap-2 text-slate-400">
+                                                                    <div>🏘️ {selectedData.towns_count} villes</div>
+                                                                    <div>📊 {selectedData.points.toLocaleString()} pts</div>
                                                                 </div>
-                                                            </>
-                                                        ) : <div>Pas de présence</div>}
+                                                                
+                                                                {rank !== 1 && top1 && (
+                                                                    <div className="pt-1 space-y-1 border-t border-slate-800">
+                                                                        <div className="text-red-400 flex justify-between"><span>Retard points:</span> <span>{(selectedData.points - top1.points).toLocaleString()} pts</span></div>
+                                                                        <div className={`${selectedData.towns_count >= top1.towns_count ? 'text-green-400' : 'text-red-400'} flex justify-between`}>
+                                                                            <span>Diff. villes:</span> <span>{selectedData.towns_count >= top1.towns_count ? '+' : ''}{selectedData.towns_count - top1.towns_count}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                {rank === 1 && ranking[1] && (
+                                                                     <div className="pt-1 space-y-1 border-t border-slate-800">
+                                                                        <div className="text-green-400 flex justify-between"><span>Avance points:</span> <span>+{(selectedData.points - ranking[1].points).toLocaleString()} pts</span></div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ) : <div className="text-slate-500 italic">Aucune présence dans cet océan</div>}
+
+                                                        <div className="pt-2 border-t border-slate-800 space-y-1.5">
+                                                            <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mb-1">Top 3 de l'Océan</div>
+                                                            {ranking.slice(0, 3).map((a, idx) => (
+                                                                <div key={a.alliance_id} className={`flex justify-between items-center ${a.alliance_id === selectedAlliance ? 'text-amber-400' : 'text-slate-400'}`}>
+                                                                    <span className="truncate w-32">#{idx+1} {a.alliance_name}</span>
+                                                                    <span className="font-mono text-[10px]">{a.points.toLocaleString()} pts</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
