@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grepolis - Domination (Mère + Wing)</title>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; padding: 0; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // CONFIGURATION DES ALLIANCES A FUSIONNER
+        const MERE_ID = "4629";
+        const WING_ID = "15359";
+        const FUSION_ID = "999999";
+        const NOM_FUSION = "Renaissance + Dragons (Global)";
+
+        const OceanDomination = () => {
+            const [loading, setLoading] = useState(false);
+            const [loadingMessage, setLoadingMessage] = useState('');
+            const [alliances, setAlliances] = useState({});
+            const [players, setPlayers] = useState({});
+            const [towns, setTowns] = useState([]);
+            const [selectedAlliance, setSelectedAlliance] = useState('');
+            const [filesLoaded, setFilesLoaded] = useState({
+                alliances: false,
+                players: false,
+                towns: false
+            });
+            const [lastUpdate, setLastUpdate] = useState(null);
+
+            // URLs GitHub
+            const GITHUB_URLS = {
+                alliances: 'https://sdurand-sdd.github.io/grepolis/alliances.txt',
+                players: 'https://sdurand-sdd.github.io/grepolis/players.txt',
+                towns: 'https://sdurand-sdd.github.io/grepolis/towns.txt',
+                lastUpdate: 'https://sdurand-sdd.github.io/grepolis/last_update.txt'
+            };
+
+            // Vérifier si les données sont fraîches (moins de 48h)
+            // Note: Comme on utilise maintenant un fichier texte pour la date, 
+            // la vérification "isFresh" dépendra de la validité de la date écrite dedans.
+            const isDataFresh = () => true; 
+
+            // Fonction pour charger depuis GitHub
+            const loadFromGitHub = async () => {
+                setLoading(true);
+                
+                try {
+                    // 1. Charger la date depuis last_update.txt
+                    setLoadingMessage('Chargement de la date...');
+                    const dateResponse = await fetch(GITHUB_URLS.lastUpdate);
+                    if (dateResponse.ok) {
+                        const dateText = await dateResponse.text();
+                        setLastUpdate(dateText.trim());
+                    }
+
+                    // 2. Charger alliances
+                    setLoadingMessage('Chargement des alliances...');
+                    const alliancesResponse = await fetch(GITHUB_URLS.alliances);
+                    const alliancesText = await alliancesResponse.text();
+                    
+                    const alliancesData = {};
+                    alliancesText.split('\n').forEach(line => {
+                        if (line.trim()) {
+                            const parts = line.split(',');
+                            if (parts.length >= 2) {
+                                alliancesData[parts[0]] = {
+                                    id: parts[0],
+                                    name: decodeURIComponent(parts[1].replace(/\+/g, ' ')),
+                                    points: parseInt(parts[2]) || 0
+                                };
+                            }
+                        }
+                    });
+
+                    // AJOUT DE LA LOGIQUE DE FUSION
+                    if (alliancesData[MERE_ID] && alliancesData[WING_ID]) {
+                        alliancesData[FUSION_ID] = {
+                            id: FUSION_ID,
+                            name: NOM_FUSION,
+                            points: alliancesData[MERE_ID].points + alliancesData[WING_ID].points,
+                            isFusion: true
+                        };
+                    }
+
+                    setAlliances(alliancesData);
+                    setFilesLoaded(prev => ({ ...prev, alliances: true }));
+
+                    // 3. Charger players
+                    setLoadingMessage('Chargement des joueurs...');
+                    const playersResponse = await fetch(GITHUB_URLS.players);
+                    const playersText = await playersResponse.text();
+                    
+                    const playersData = {};
+                    playersText.split('\n').forEach(line => {
+                        if (line.trim()) {
+                            const parts = line.split(',');
+                            if (parts.length >= 2) {
+                                playersData[parts[0]] = {
+                                    id: parts[0],
+                                    name: decodeURIComponent(parts[1].replace(/\+/g, ' ')),
+                                    alliance_id: parts[2] || null
+                                };
+                            }
+                        }
+                    });
+                    setPlayers(playersData);
+                    setFilesLoaded(prev => ({ ...prev, players: true }));
+
+                    // 4. Charger towns
+                    setLoadingMessage('Chargement des villes...');
+                    const townsResponse = await fetch(GITHUB_URLS.towns);
+                    const townsText = await townsResponse.text();
+                    
+                    const townsData = [];
+                    townsText.split('\n').forEach(line => {
+                        if (line.trim()) {
+                            const parts = line.split(',');
+                            if (parts.length >= 7) {
+                                const x = parseInt(parts[3]);
+                                const y = parseInt(parts[4]);
+                                const oceanX = Math.floor(x / 100);
+                                const oceanY = Math.floor(y / 100);
+                                const ocean = oceanX * 10 + oceanY;
+                                
+                                townsData.push({
+                                    id: parts[0],
+                                    player_id: parts[1],
+                                    x: x,
+                                    y: y,
+                                    points: parseInt(parts[6]) || 0,
+                                    ocean: ocean
+                                });
+                            }
+                        }
+                    });
+                    setTowns(townsData);
+                    setFilesLoaded(prev => ({ ...prev, towns: true }));
+
+                } catch (error) {
+                    alert(`Erreur de chargement: ${error.message}`);
+                } finally {
+                    setLoading(false);
+                    setLoadingMessage('');
+                }
+            };
+
+            useEffect(() => {
+                loadFromGitHub();
+            }, []);
+
+            // Calculer les stats par océan AVEC FUSION LOGIQUE
+            const getOceanStats = () => {
+                const oceanStats = {};
+
+                towns.forEach(town => {
+                    const player = players[town.player_id];
+                    let allianceId = player?.alliance_id;
+                    
+                    if (!allianceId) return;
+
+                    // Si le joueur est dans la mère ou la wing, on le compte dans la fusion
+                    let effectiveId = allianceId;
+                    if (allianceId === MERE_ID || allianceId === WING_ID) {
+                        effectiveId = FUSION_ID;
+                    }
+
+                    if (!oceanStats[town.ocean]) {
+                        oceanStats[town.ocean] = {};
+                    }
+
+                    if (!oceanStats[town.ocean][effectiveId]) {
+                        oceanStats[town.ocean][effectiveId] = {
+                            alliance_id: effectiveId,
+                            alliance_name: alliances[effectiveId]?.name || 'Inconnu',
+                            towns_count: 0,
+                            points: 0
+                        };
+                    }
+
+                    oceanStats[town.ocean][effectiveId].towns_count++;
+                    oceanStats[town.ocean][effectiveId].points += town.points;
+                });
+
+                return oceanStats;
+            };
+
+            const oceanStats = getOceanStats();
+
+            const getOceanRanking = (ocean) => {
+                if (!oceanStats[ocean]) return [];
+                return Object.values(oceanStats[ocean])
+                    .sort((a, b) => b.points - a.points || b.towns_count - a.towns_count);
+            };
+
+            const alliancesList = Object.values(alliances).sort((a, b) => 
+                a.name.localeCompare(b.name)
+            );
+
+            if (!filesLoaded.alliances || !filesLoaded.players || !filesLoaded.towns) {
+                return (
+                    <div className="w-full min-h-screen bg-slate-900 flex items-center justify-center">
+                        <div className="text-center">
+                            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-amber-400 mx-auto mb-4"></div>
+                            <p className="text-slate-300">{loadingMessage || 'Initialisation...'}</p>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="w-full min-h-screen bg-slate-900 p-8">
+                    <div className="max-w-7xl mx-auto">
+                        <div className="flex justify-between items-start mb-6">
+                            <div>
+                                <h1 className="text-3xl font-bold text-amber-400">
+                                    Domination des Océans - Grepolis
+                                </h1>
+                                {lastUpdate && (
+                                    <div className="mt-2 flex items-center gap-2">
+                                        <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                                        <span className="text-slate-400 text-sm">
+                                            📅 Mise à jour : {lastUpdate}
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+                            <button onClick={loadFromGitHub} className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm text-white">
+                                🔄 Actualiser
+                            </button>
+                        </div>
+
+                        <div className="bg-slate-800 p-4 rounded-lg mb-6">
+                            <label className="block mb-2 text-white font-medium">Choisir une alliance (Individuelle ou Groupe Global) :</label>
+                            <select
+                                value={selectedAlliance}
+                                onChange={(e) => setSelectedAlliance(e.target.value)}
+                                className="w-full px-4 py-2 bg-slate-700 text-white rounded-lg border border-slate-600"
+                            >
+                                <option value="">-- Sélectionnez une alliance --</option>
+                                {alliancesList.map(alliance => (
+                                    <option key={alliance.id} value={alliance.id} className={alliance.id === FUSION_ID ? "font-bold text-amber-400" : ""}>
+                                        {alliance.name} {alliance.id === FUSION_ID ? "⭐" : ""}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {selectedAlliance && (() => {
+                            const dominatedOceans = Array.from({ length: 100 }, (_, i) => {
+                                const oceanY = Math.floor(i / 10);
+                                const oceanX = i % 10;
+                                const ocean = oceanX * 10 + oceanY;
+                                const ranking = getOceanRanking(ocean);
+                                return ranking.length > 0 && ranking[0].alliance_id === selectedAlliance;
+                            }).filter(Boolean).length;
+
+                            return (
+                            <div className="bg-slate-800 p-6 rounded-lg">
+                                <h2 className="text-xl font-bold text-amber-400 mb-2 text-center">
+                                    Carte de domination : {alliances[selectedAlliance]?.name}
+                                </h2>
+                                <div className="flex justify-center mb-4">
+                                    <div className="flex items-center gap-2 bg-green-700 border border-green-400 rounded-full px-4 py-1">
+                                        <span className="text-lg">&#128081;</span>
+                                        <span className="text-white font-bold text-sm">
+                                            {dominatedOceans} océan{dominatedOceans > 1 ? 's' : ''} dominé{dominatedOceans > 1 ? 's' : ''} (Rang #1)
+                                        </span>
+                                    </div>
+                                </div>
+                                
+                                <div className="grid grid-cols-10 gap-1 max-w-5xl mx-auto">
+                                    {Array.from({ length: 100 }, (_, i) => {
+                                        const oceanY = Math.floor(i / 10);
+                                        const oceanX = i % 10;
+                                        const ocean = oceanX * 10 + oceanY;
+                                        
+                                        const ranking = getOceanRanking(ocean);
+                                        const top1 = ranking[0];
+                                        const top2 = ranking[1];
+                                        
+                                        const selectedData = ranking.find(r => r.alliance_id === selectedAlliance);
+                                        const selectedRank = selectedData ? ranking.indexOf(selectedData) + 1 : null;
+                                        const isTop1 = selectedRank === 1;
+                                        const hasPresence = selectedData !== undefined;
+
+                                        let bgColor = 'bg-slate-700';
+                                        if (hasPresence) {
+                                            if (isTop1) bgColor = 'bg-green-600';
+                                            else if (selectedRank === 2) bgColor = 'bg-yellow-600';
+                                            else if (selectedRank === 3) bgColor = 'bg-orange-600';
+                                            else bgColor = 'bg-red-700';
+                                        }
+
+                                        return (
+                                            <div key={ocean} className={`${bgColor} aspect-square flex flex-col items-center justify-center rounded cursor-pointer hover:opacity-80 transition-opacity relative group border border-slate-600`}>
+                                                <div className="text-xs font-bold text-white">{ocean.toString().padStart(2, '0')}</div>
+                                                {hasPresence && <div className="text-[10px] text-white opacity-80">#{selectedRank}</div>}
+
+                                                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block z-10 w-64">
+                                                    <div className="bg-slate-900 text-white p-3 rounded-lg shadow-xl border border-slate-600 text-xs">
+                                                        <div className="font-bold text-amber-400 mb-1 text-sm">Océan {ocean.toString().padStart(2, '0')}</div>
+                                                        {hasPresence ? (
+                                                            <>
+                                                                <div className="mb-2 font-semibold text-green-400">{isTop1 ? "👑 Dominant" : `Rang #${selectedRank}`}</div>
+                                                                <div className="space-y-1">
+                                                                    <div>Villes : {selectedData.towns_count}</div>
+                                                                    <div>Points : {selectedData.points.toLocaleString()}</div>
+                                                                    {top1 && !isTop1 && (
+                                                                        <div className="text-red-400 pt-1 border-t border-slate-700">
+                                                                            Retard points : {(selectedData.points - top1.points).toLocaleString()}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </>
+                                                        ) : <div>Pas de présence</div>}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        );
+                        })()}
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<OceanDomination />, document.getElementById('root'));
+    </script>
+</body>
+</html>
