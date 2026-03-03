@@ -159,47 +159,58 @@
                 loadFromGitHub();
             }, []);
 
-            // Calculer les stats par océan AVEC FUSION LOGIQUE
+            // Calculer les stats par océan — deux versions : avec et sans fusion
             const getOceanStats = () => {
-                const oceanStats = {};
+                const oceanStatsFused = {};   // fusion mère+wing sous FUSION_ID
+                const oceanStatsRaw = {};     // chaque alliance comptée séparément
 
                 towns.forEach(town => {
                     const player = players[town.player_id];
-                    let allianceId = player?.alliance_id;
-                    
+                    const allianceId = player?.alliance_id;
                     if (!allianceId) return;
 
-                    // Si le joueur est dans la mère ou la wing, on le compte dans la fusion
-                    let effectiveId = allianceId;
-                    if (allianceId === MERE_ID || allianceId === WING_ID) {
-                        effectiveId = FUSION_ID;
-                    }
+                    const effectiveId = (allianceId === MERE_ID || allianceId === WING_ID) ? FUSION_ID : allianceId;
 
-                    if (!oceanStats[town.ocean]) {
-                        oceanStats[town.ocean] = {};
-                    }
-
-                    if (!oceanStats[town.ocean][effectiveId]) {
-                        oceanStats[town.ocean][effectiveId] = {
+                    // --- Stats fusionnées ---
+                    if (!oceanStatsFused[town.ocean]) oceanStatsFused[town.ocean] = {};
+                    if (!oceanStatsFused[town.ocean][effectiveId]) {
+                        oceanStatsFused[town.ocean][effectiveId] = {
                             alliance_id: effectiveId,
                             alliance_name: alliances[effectiveId]?.name || 'Inconnu',
-                            towns_count: 0,
-                            points: 0
+                            towns_count: 0, points: 0
                         };
                     }
+                    oceanStatsFused[town.ocean][effectiveId].towns_count++;
+                    oceanStatsFused[town.ocean][effectiveId].points += town.points;
 
-                    oceanStats[town.ocean][effectiveId].towns_count++;
-                    oceanStats[town.ocean][effectiveId].points += town.points;
+                    // --- Stats brutes (sans fusion) ---
+                    if (!oceanStatsRaw[town.ocean]) oceanStatsRaw[town.ocean] = {};
+                    if (!oceanStatsRaw[town.ocean][allianceId]) {
+                        oceanStatsRaw[town.ocean][allianceId] = {
+                            alliance_id: allianceId,
+                            alliance_name: alliances[allianceId]?.name || 'Inconnu',
+                            towns_count: 0, points: 0
+                        };
+                    }
+                    oceanStatsRaw[town.ocean][allianceId].towns_count++;
+                    oceanStatsRaw[town.ocean][allianceId].points += town.points;
                 });
 
-                return oceanStats;
+                return { oceanStatsFused, oceanStatsRaw };
             };
 
-            const oceanStats = getOceanStats();
+            const { oceanStatsFused, oceanStatsRaw } = getOceanStats();
 
             const getOceanRanking = (ocean) => {
-                if (!oceanStats[ocean]) return [];
-                return Object.values(oceanStats[ocean])
+                if (!oceanStatsFused[ocean]) return [];
+                return Object.values(oceanStatsFused[ocean])
+                    .sort((a, b) => b.points - a.points || b.towns_count - a.towns_count);
+            };
+
+            // Classement brut (sans fusion) pour les alliances individuelles
+            const getOceanRankingRaw = (ocean) => {
+                if (!oceanStatsRaw[ocean]) return [];
+                return Object.values(oceanStatsRaw[ocean])
                     .sort((a, b) => b.points - a.points || b.towns_count - a.towns_count);
             };
 
@@ -257,13 +268,25 @@
                         </div>
 
                         {selectedAlliance && (() => {
-                            const effectiveSelectedId = (selectedAlliance === MERE_ID || selectedAlliance === WING_ID) ? FUSION_ID : selectedAlliance;
+                            const isFusionSelected = selectedAlliance === FUSION_ID;
+                            const isPartOfFusion = selectedAlliance === MERE_ID || selectedAlliance === WING_ID;
                             const dominatedOceans = Array.from({ length: 100 }, (_, i) => {
                                 const oceanY = Math.floor(i / 10);
                                 const oceanX = i % 10;
                                 const ocean = oceanX * 10 + oceanY;
-                                const ranking = getOceanRanking(ocean);
-                                return ranking.length > 0 && ranking[0].alliance_id === effectiveSelectedId;
+                                if (isFusionSelected) {
+                                    // Fusion : utiliser les stats fusionnées
+                                    const ranking = getOceanRanking(ocean);
+                                    return ranking.length > 0 && ranking[0].alliance_id === FUSION_ID;
+                                } else if (isPartOfFusion) {
+                                    // Alliance individuelle membre de la fusion : stats brutes
+                                    const ranking = getOceanRankingRaw(ocean);
+                                    return ranking.length > 0 && ranking[0].alliance_id === selectedAlliance;
+                                } else {
+                                    // Autre alliance : stats fusionnées normalement
+                                    const ranking = getOceanRanking(ocean);
+                                    return ranking.length > 0 && ranking[0].alliance_id === selectedAlliance;
+                                }
                             }).filter(Boolean).length;
 
                             return (
