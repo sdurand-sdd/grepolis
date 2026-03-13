@@ -50,7 +50,7 @@
         const generateRecentWeeks = () => {
             const weeks = [];
             const now = new Date();
-            for (let i = 0; i <= 52; i++) {
+            for (let i = 0; i <= 26; i++) {
                 const d = new Date(now);
                 d.setDate(d.getDate() - i * 7);
                 const { week, year } = getISOWeek(d);
@@ -185,7 +185,7 @@
                         const snap = await loadSnapshot(weekRef);
                         setRefSnap(snap);
                     } catch (e) {
-                        setError(`Impossible de charger la semaine ${weekRef}.\nVérifie que les fichiers archivés existent dans /data/.\n${e.message}`);
+                        setError(`Semaine ${weekRef} non disponible.`);
                         setRefSnap(null);
                     } finally {
                         setLoading(false);
@@ -219,7 +219,7 @@
                         const snap = await loadSnapshot(weekCurrent);
                         setCurrentSnap(snap);
                     } catch (e) {
-                        setError(`Impossible de charger la semaine ${weekCurrent}.\n${e.message}`);
+                        setError(`Semaine ${weekCurrent} non disponible.`);
                     } finally {
                         setLoading(false);
                     }
