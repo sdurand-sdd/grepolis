@@ -2,57 +2,86 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Alliance Tracker - Delta Villes</title>
+    <title>Alliance Tracker - Delta Evolution</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f4f9; color: #333; padding: 20px; }
-        .container { max-width: 900px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        h1 { color: #2c3e50; text-align: center; }
-        .controls { display: flex; gap: 20px; margin-bottom: 20px; padding: 15px; background: #e9ecef; border-radius: 5px; }
-        select { padding: 8px; border-radius: 4px; border: 1px solid #ccc; flex: 1; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th { background: #2c3e50; color: white; padding: 12px; text-align: left; cursor: pointer; }
-        td { padding: 10px; border-bottom: 1px solid #ddd; }
-        tr:hover { background: #f1f1f1; }
-        .delta-plus { color: green; font-weight: bold; }
-        .delta-zero { color: #999; }
-        .delta-minus { color: red; font-weight: bold; }
-        .loading { font-style: italic; color: #666; }
+        :root { --primary: #2c3e50; --accent: #3498db; --success: #27ae60; --danger: #e74c3c; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; }
+        .container { max-width: 1000px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        
+        h1 { color: var(--primary); text-align: center; margin-top: 0; border-bottom: 2px solid #eee; padding-bottom: 15px; }
+        
+        .controls { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr auto; 
+            gap: 20px; 
+            margin: 25px 0; 
+            padding: 20px; 
+            background: #f8f9fa; 
+            border-radius: 8px;
+            align-items: end;
+        }
+
+        label { display: block; font-weight: bold; margin-bottom: 8px; color: #555; font-size: 0.9em; }
+        select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; background: white; font-size: 14px; }
+        
+        button { 
+            background: var(--accent); color: white; border: none; padding: 10px 25px; 
+            border-radius: 6px; cursor: pointer; font-weight: bold; transition: background 0.2s;
+        }
+        button:hover { background: #2980b9; }
+
+        .status-bar { padding: 10px; margin-bottom: 20px; border-radius: 6px; font-size: 0.9em; text-align: center; }
+        .loading { background: #fff3cd; color: #856404; }
+        .ready { background: #d4edda; color: #155724; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th { background: var(--primary); color: white; padding: 15px; text-align: left; }
+        td { padding: 12px 15px; border-bottom: 1px solid #eee; }
+        tr:nth-child(even) { background: #fafafa; }
+        
+        .delta-badge { 
+            padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.9em;
+        }
+        .plus { background: #d4edda; color: var(--success); }
+        .minus { background: #f8d7da; color: var(--danger); }
+        .neutral { background: #e2e3e5; color: #666; }
+
+        .info-towns { font-size: 0.85em; color: #7f8c8d; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>📊 Suivi de progression Alliance</h1>
+    <h1>🛡️ Analyseur de Croissance Alliance</h1>
     
+    <div id="status" class="status-bar loading">Initialisation des fichiers...</div>
+
     <div class="controls">
         <div>
-            <label>1. Comparer avec :</label><br>
+            <label>Période de comparaison (Archives)</label>
             <select id="archiveSelect">
-                <option value="_01">Archive 01 (Mois/Semaine précédente)</option>
-                <option value="_02">Archive 02</option>
-                <option value="_03">Archive 03</option>
+                <option value="_2024_01">Janvier 2024 (Saine 01)</option>
+                <option value="_2024_02">Janvier 2024 (Semaine 02)</option>
+                <option value="_2024_03">Janvier 2024 (Semaine 03)</option>
+                <option value="_01">Archive test _01</option>
             </select>
         </div>
-        <div style="flex: 2;">
-            <label>2. Choisir l'Alliance :</label><br>
+        <div>
+            <label>Choisir l'Alliance cible</label>
             <select id="allianceSelect" disabled>
-                <option>Chargement des alliances...</option>
+                <option>Chargement...</option>
             </select>
         </div>
-        <div style="align-self: flex-end;">
-            <button id="btnRefresh" style="padding: 10px 20px; cursor: pointer;">Calculer Delta</button>
-        </div>
+        <button id="btnCalculate">Comparer</button>
     </div>
-
-    <div id="status" class="loading">Initialisation...</div>
 
     <table id="resultTable" style="display:none;">
         <thead>
             <tr>
                 <th>Joueur</th>
-                <th>Villes (Base)</th>
-                <th>Villes (Actuel)</th>
-                <th>Delta</th>
+                <th>Villes (Archive)</th>
+                <th>Villes (Aujourd'hui)</th>
+                <th>Évolution (Delta)</th>
             </tr>
         </thead>
         <tbody id="resultBody"></tbody>
@@ -60,130 +89,131 @@
 </div>
 
 <script>
-    // Configuration des noms de fichiers
-    const FILES = {
+    // Chemins des fichiers
+    const FILE_CONFIG = {
         alliances: 'alliances.txt',
-        playersCurrent: 'players.txt'
+        playersCurrent: 'players.txt',
+        archiveFolder: 'archives/' // Dossier des archives
     };
 
-    let allPlayersData = {}; // Données actuelles
+    let currentPlayers = {};
     let alliances = {};
 
-    // Nettoyage des noms (décodage URL et remplacement des + par espaces)
-    function cleanName(str) {
-        if (!str) return "";
-        return decodeURIComponent(str.replace(/\+/g, ' '));
+    function clean(str) {
+        return str ? decodeURIComponent(str.replace(/\+/g, ' ')) : "";
     }
 
-    // Chargement initial
-    async function init() {
+    // Chargement des données au démarrage
+    async function loadInitialData() {
         try {
-            document.getElementById('status').innerText = "Chargement des données actuelles...";
-            
-            // 1. Charger les alliances pour la liste déroulante
-            const aliRes = await fetch(FILES.alliances);
-            const aliText = await aliRes.text();
-            const aliLines = aliText.split('\n');
+            // 1. Charger Alliances
+            const resAli = await fetch(FILE_CONFIG.alliances);
+            const textAli = await resAli.text();
             const aliSelect = document.getElementById('allianceSelect');
-            aliSelect.innerHTML = '<option value="">-- Sélectionnez une alliance --</option>';
-            
-            aliLines.forEach(line => {
+            aliSelect.innerHTML = '<option value="">-- Sélectionner --</option>';
+
+            textAli.split('\n').forEach(line => {
                 const d = line.split(',');
-                if(d.length > 1) {
-                    alliances[d[0]] = cleanName(d[1]);
+                if(d.length > 5) {
+                    alliances[d[0]] = clean(d[1]);
                     let opt = document.createElement('option');
                     opt.value = d[0];
-                    opt.textContent = `${cleanName(d[1])} (${d[4]} membres)`;
+                    opt.textContent = `${clean(d[1])} (${d[4]} membres)`;
                     aliSelect.appendChild(opt);
                 }
             });
             aliSelect.disabled = false;
 
-            // 2. Charger les joueurs actuels
-            const plRes = await fetch(FILES.playersCurrent);
-            const plText = await plRes.text();
-            const plLines = plText.split('\n');
-            plLines.forEach(line => {
+            // 2. Charger Joueurs Actuels
+            const resPl = await fetch(FILE_CONFIG.playersCurrent);
+            const textPl = await resPl.text();
+            textPl.split('\n').forEach(line => {
                 const d = line.split(',');
                 if(d.length > 5) {
-                    allPlayersData[d[0]] = {
-                        name: cleanName(d[1]),
+                    currentPlayers[d[0]] = {
+                        name: clean(d[1]),
                         aliId: d[2],
                         towns: parseInt(d[5])
                     };
                 }
             });
 
-            document.getElementById('status').innerText = "Prêt. Choisissez une alliance.";
-        } catch (err) {
-            document.getElementById('status').innerText = "Erreur de chargement. Vérifiez que les fichiers .txt sont présents.";
-            console.error(err);
+            const status = document.getElementById('status');
+            status.innerText = "✅ Données actuelles prêtes. Prêt pour l'analyse.";
+            status.className = "status-bar ready";
+
+        } catch (e) {
+            document.getElementById('status').innerText = "❌ Erreur : Vérifiez la présence de alliances.txt et players.txt";
+            console.error(e);
         }
     }
 
-    // Calcul du Delta au clic sur le bouton
-    document.getElementById('btnRefresh').addEventListener('click', async () => {
-        const aliId = document.getElementById('allianceSelect').value;
+    // Logique de comparaison
+    document.getElementById('btnCalculate').onclick = async function() {
+        const selectedAli = document.getElementById('allianceSelect').value;
         const archiveSuffix = document.getElementById('archiveSelect').value;
-        
-        if(!aliId) { alert("Choisissez une alliance !"); return; }
 
-        document.getElementById('status').innerText = "Comparaison en cours...";
+        if(!selectedAli) return alert("Sélectionnez d'abord une alliance.");
+
+        document.getElementById('status').innerText = "Lecture de l'archive...";
         
         try {
-            // Charger le fichier archive sélectionné
-            const archRes = await fetch(`players${archiveSuffix}.txt`);
-            const archText = await archRes.text();
-            const archLines = archText.split('\n');
+            // Cherche dans le sous-dossier /archives/
+            const resArch = await fetch(`${FILE_CONFIG.archiveFolder}players${archiveSuffix}.txt`);
+            if(!resArch.ok) throw new Error("Fichier archive introuvable");
             
-            let archivePlayers = {};
-            archLines.forEach(line => {
+            const textArch = await resArch.text();
+            let archData = {};
+            textArch.split('\n').forEach(line => {
                 const d = line.split(',');
-                if(d.length > 5) { archivePlayers[d[0]] = parseInt(d[5]); }
+                if(d.length > 5) archData[d[0]] = parseInt(d[5]);
             });
 
-            // Filtrer et comparer
-            const results = [];
-            for (let id in allPlayersData) {
-                const p = allPlayersData[id];
-                if (p.aliId === aliId) {
-                    const oldTowns = archivePlayers[id] || 0; // 0 si le joueur n'existait pas
+            // Calcul
+            let results = [];
+            for (let id in currentPlayers) {
+                let p = currentPlayers[id];
+                if (p.aliId === selectedAli) {
+                    let oldVal = archData[id] || 0;
                     results.push({
                         name: p.name,
-                        old: oldTowns,
-                        current: p.towns,
-                        delta: p.towns - oldTowns
+                        old: oldVal,
+                        now: p.towns,
+                        delta: p.towns - oldVal
                     });
                 }
             }
 
-            // Trier par Delta décroissant
+            // Tri (les plus grosses progressions en haut)
             results.sort((a, b) => b.delta - a.delta);
 
-            // Affichage
+            // Rendu du tableau
             const tbody = document.getElementById('resultBody');
-            tbody.innerHTML = '';
+            tbody.innerHTML = "";
             results.forEach(r => {
-                let deltaClass = r.delta > 0 ? 'delta-plus' : (r.delta < 0 ? 'delta-minus' : 'delta-zero');
-                let row = `<tr>
-                    <td>**${r.name}**</td>
-                    <td>${r.old}</td>
-                    <td>${r.current}</td>
-                    <td class="${deltaClass}">${r.delta > 0 ? '+' : ''}${r.delta}</td>
-                </tr>`;
-                tbody.innerHTML += row;
+                const badgeClass = r.delta > 0 ? 'plus' : (r.delta < 0 ? 'minus' : 'neutral');
+                const sign = r.delta > 0 ? '+' : '';
+                tbody.innerHTML += `
+                    <tr>
+                        <td><strong>${r.name}</strong></td>
+                        <td class="info-towns">${r.old} villes</td>
+                        <td class="info-towns">${r.now} villes</td>
+                        <td><span class="delta-badge ${badgeClass}">${sign}${r.delta}</span></td>
+                    </tr>
+                `;
             });
 
             document.getElementById('resultTable').style.display = 'table';
-            document.getElementById('status').innerText = `Affichage de ${results.length} membres.`;
+            document.getElementById('status').innerText = `Analyse terminée pour ${alliances[selectedAli]}`;
+            document.getElementById('status').className = "status-bar ready";
 
-        } catch (err) {
-            alert("Erreur : Impossible de trouver le fichier archive players" + archiveSuffix + ".txt");
-            document.getElementById('status').innerText = "Erreur de fichier archive.";
+        } catch (e) {
+            alert("Erreur : Le fichier archives/players" + archiveSuffix + ".txt est introuvable.");
+            document.getElementById('status').innerText = "Erreur de chargement d'archive.";
         }
-    });
+    };
 
-    init();
+    loadInitialData();
 </script>
 
 </body>
