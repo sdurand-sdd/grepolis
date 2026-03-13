@@ -106,23 +106,40 @@
     // Chargement des données au démarrage
     async function loadInitialData() {
         try {
-            // 1. Charger Alliances
-            const resAli = await fetch(FILE_CONFIG.alliances);
-            const textAli = await resAli.text();
-            const aliSelect = document.getElementById('allianceSelect');
-            aliSelect.innerHTML = '<option value="">-- Sélectionner --</option>';
+           // 1. Charger Alliances
+const resAli = await fetch(FILE_CONFIG.alliances);
+const textAli = await resAli.text();
+const aliSelect = document.getElementById('allianceSelect');
+aliSelect.innerHTML = '<option value="">-- Sélectionner --</option>';
 
-            textAli.split('\n').forEach(line => {
-                const d = line.split(',');
-                if(d.length > 5) {
-                    alliances[d[0]] = clean(d[1]);
-                    let opt = document.createElement('option');
-                    opt.value = d[0];
-                    opt.textContent = `${clean(d[1])} (${d[4]} membres)`;
-                    aliSelect.appendChild(opt);
-                }
-            });
-            aliSelect.disabled = false;
+// On crée d'abord une liste (array) pour pouvoir la trier
+let listAli = [];
+
+textAli.split('\n').forEach(line => {
+    const d = line.split(',');
+    if(d.length > 5) {
+        listAli.push({
+            id: d[0],
+            name: clean(d[1]),
+            members: d[4]
+        });
+    }
+});
+
+// --- LE TRI PAR ORDRE ALPHABÉTIQUE ---
+listAli.sort((a, b) => a.name.localeCompare(b.name));
+// -------------------------------------
+
+// On remplit maintenant le menu avec la liste triée
+listAli.forEach(ali => {
+    alliances[ali.id] = ali.name;
+    let opt = document.createElement('option');
+    opt.value = ali.id;
+    opt.textContent = `${ali.name} (${ali.members} membres)`;
+    aliSelect.appendChild(opt);
+});
+
+aliSelect.disabled = false;
 
             // 2. Charger Joueurs Actuels
             const resPl = await fetch(FILE_CONFIG.playersCurrent);
