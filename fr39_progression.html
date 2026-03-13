@@ -50,7 +50,7 @@
         const generateRecentWeeks = () => {
             const weeks = [];
             const now = new Date();
-            for (let i = 0; i <= 26; i++) {
+            for (let i = 0; i <= 52; i++) {
                 const d = new Date(now);
                 d.setDate(d.getDate() - i * 7);
                 const { week, year } = getISOWeek(d);
