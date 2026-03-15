@@ -47,6 +47,24 @@
         };
 
         // Génère les semaines des 6 derniers mois
+        // Retourne la date du samedi d'une semaine ISO
+        const getSaturdayOfWeek = (year, week) => {
+            const jan4 = new Date(Date.UTC(year, 0, 4));
+            const dayOfWeek = jan4.getUTCDay() || 7;
+            const monday = new Date(jan4);
+            monday.setUTCDate(jan4.getUTCDate() - (dayOfWeek - 1) + (week - 1) * 7);
+            const saturday = new Date(monday);
+            saturday.setUTCDate(monday.getUTCDate() + 5);
+            return saturday;
+        };
+
+        const weekOptionLabel = (w) => {
+            const [yearStr, weekPart] = w.split('_W');
+            const sat = getSaturdayOfWeek(parseInt(yearStr), parseInt(weekPart));
+            const dateStr = sat.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
+            return `${yearStr} — Semaine ${weekPart} — ${dateStr}`;
+        };
+
         const generateRecentWeeks = () => {
             const weeks = [];
             const now = new Date();
@@ -361,7 +379,7 @@
                                     >
                                         <option value="">— Aucune (pas de delta) —</option>
                                         {recentWeeks.map(w => (
-                                            <option key={w} value={w}>{w.replace('_', ' — ').replace('W', 'Semaine ')}</option>
+                                            <option key={w} value={w}>{weekOptionLabel(w)}</option>
                                         ))}
                                     </select>
                                 </div>
@@ -376,9 +394,9 @@
                                         onChange={e => setWeekCurrent(e.target.value)}
                                         className="w-full bg-slate-700 border border-slate-600 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-400"
                                     >
-                                        <option value="">Aujourd'hui</option>
+                                        <option value="">Fichier actuel (racine)</option>
                                         {recentWeeks.map(w => (
-                                            <option key={w} value={w}>{w.replace('_', ' — ').replace('W', 'Semaine ')}</option>
+                                            <option key={w} value={w}>{weekOptionLabel(w)}</option>
                                         ))}
                                     </select>
                                 </div>
