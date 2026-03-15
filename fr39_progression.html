@@ -376,7 +376,7 @@
                                         onChange={e => setWeekCurrent(e.target.value)}
                                         className="w-full bg-slate-700 border border-slate-600 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-400"
                                     >
-                                        <option value="">Fichier actuel (racine)</option>
+                                        <option value="">Aujourd'hui</option>
                                         {recentWeeks.map(w => (
                                             <option key={w} value={w}>{w.replace('_', ' — ').replace('W', 'Semaine ')}</option>
                                         ))}
