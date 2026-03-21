@@ -1,0 +1,1541 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fiche de suivi hebdomadaire - 4ème</title>
+    <style>
+        /* ═══════════════════════════════════════════════
+           PALETTE TAUPE CHAUDE
+           --taupe-dark:   #4a3f35   (titres, texte fort)
+           --taupe-mid:    #7a6a5a   (header, th)
+           --taupe-light:  #b5a090   (accents, bordures)
+           --taupe-pale:   #e8ddd4   (fonds clairs)
+           --taupe-cream:  #f5f0eb   (fond page, zébrage)
+           --white:        #ffffff
+           Couleurs catégories : adoucies mais lisibles
+        ═══════════════════════════════════════════════ */
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #6b5c4e 0%, #4a3f35 100%);
+            padding: 10px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: #fff;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(74,63,53,0.35);
+            overflow: hidden;
+        }
+
+        /* ── Header ── */
+        .header {
+            background: linear-gradient(135deg, #6b5c4e 0%, #4a3f35 100%);
+            color: #f5f0eb;
+            padding: 15px 20px;
+            text-align: center;
+            position: relative;
+        }
+        .header h1 { font-size: 22px; margin-bottom: 10px; letter-spacing: 0.3px; }
+
+        .week-selector {
+            display: flex; align-items: center; justify-content: center;
+            gap: 10px; margin-top: 10px;
+        }
+        .week-selector button {
+            background: rgba(255,255,255,0.15);
+            border: 2px solid rgba(255,255,255,0.6);
+            color: #f5f0eb;
+            padding: 6px 12px; border-radius: 6px;
+            cursor: pointer; font-size: 13px; transition: all 0.3s;
+        }
+        .week-selector button:hover {
+            background: rgba(255,255,255,0.25); transform: scale(1.05);
+        }
+        .week-selector span {
+            font-size: 14px; font-weight: bold;
+            min-width: 200px; text-align: center; color: #f5f0eb;
+        }
+
+        /* ── Légende ── */
+        .legend {
+            display: flex; flex-wrap: wrap; gap: 10px;
+            padding: 10px 20px;
+            background: #f5f0eb;
+            border-bottom: 2px solid #e8ddd4;
+            justify-content: center;
+        }
+        .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #4a3f35; }
+        .legend-box { width: 20px; height: 20px; border-radius: 4px; border: 2px solid rgba(0,0,0,0.1); }
+
+        /* Couleurs catégories — adoucies */
+        .retard      { background: #c0392b; }
+        .travail     { background: #d4a017; }
+        .materiel    { background: #c0732a; }
+        .bavardage   { background: #7d6db0; }
+        .perturbation{ background: #b5547a; }
+        .progres     { background: #3d9970; }
+
+        /* ── Tableau ── */
+        .table-container {
+            overflow-x: auto; padding: 10px;
+            max-height: calc(100vh - 380px); overflow-y: auto;
+        }
+        table { width: 100%; border-collapse: separate; border-spacing: 0; }
+
+        th {
+            background: linear-gradient(135deg, #7a6a5a 0%, #4a3f35 100%);
+            color: #f5f0eb;
+            padding: 8px 6px; text-align: center;
+            font-weight: 600; font-size: 11px;
+            position: sticky; top: 0; z-index: 10;
+        }
+        th:first-child { border-top-left-radius: 8px; }
+        th:last-child  { border-top-right-radius: 8px; }
+
+        td {
+            padding: 6px 4px; text-align: center;
+            border-bottom: 1px solid #e8ddd4;
+            transition: all 0.3s ease;
+        }
+        td:first-child {
+            text-align: left; font-weight: 600;
+            color: #4a3f35; padding-left: 12px; font-size: 12px;
+        }
+        tr:hover { background: #f5f0eb; }
+
+        /* ── Compteurs ── */
+        .cell-container {
+            display: flex; align-items: center; justify-content: center; gap: 3px;
+        }
+        .count-display {
+            min-width: 24px; height: 24px;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: bold; font-size: 12px;
+            background: #f5f0eb; border: 2px solid #e8ddd4;
+            border-radius: 5px; color: #4a3f35; transition: all 0.3s ease;
+        }
+        .count-display.retard.active      { background: #c0392b; border-color: #a93226; color: white; }
+        .count-display.travail.active     { background: #d4a017; border-color: #b8860b; color: #2d1f00; }
+        .count-display.materiel.active    { background: #c0732a; border-color: #a0611f; color: white; }
+        .count-display.bavardage.active   { background: #7d6db0; border-color: #6a5a9a; color: white; }
+        .count-display.perturbation.active{ background: #b5547a; border-color: #9a3f64; color: white; }
+
+        .btn-plus, .btn-minus {
+            width: 24px; height: 24px;
+            border: 2px solid #c8b8a8; border-radius: 5px;
+            cursor: pointer; transition: all 0.2s;
+            background: white;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: bold; font-size: 13px; color: #7a6a5a;
+        }
+        .btn-plus:hover, .btn-minus:hover { transform: scale(1.1); box-shadow: 0 2px 8px rgba(74,63,53,0.2); }
+        .btn-plus:active, .btn-minus:active { transform: scale(0.95); }
+
+        .btn-plus.retard,    .btn-minus.retard      { border-color: #c0392b; color: #c0392b; }
+        .btn-plus.travail,   .btn-minus.travail     { border-color: #d4a017; color: #a07800; }
+        .btn-plus.materiel,  .btn-minus.materiel    { border-color: #c0732a; color: #c0732a; }
+        .btn-plus.bavardage, .btn-minus.bavardage   { border-color: #7d6db0; color: #7d6db0; }
+        .btn-plus.perturbation,.btn-minus.perturbation{ border-color: #b5547a; color: #b5547a; }
+
+        .btn-plus.retard:hover      { background: #c0392b; color: white; }
+        .btn-plus.travail:hover     { background: #d4a017; color: #2d1f00; }
+        .btn-plus.materiel:hover    { background: #c0732a; color: white; }
+        .btn-plus.bavardage:hover   { background: #7d6db0; color: white; }
+        .btn-plus.perturbation:hover{ background: #b5547a; color: white; }
+        .btn-minus.retard:hover      { background: #c0392b; color: white; }
+        .btn-minus.travail:hover     { background: #d4a017; color: #2d1f00; }
+        .btn-minus.materiel:hover    { background: #c0732a; color: white; }
+        .btn-minus.bavardage:hover   { background: #7d6db0; color: white; }
+        .btn-minus.perturbation:hover{ background: #b5547a; color: white; }
+
+        /* ── Bilan ── */
+        .progres-simple {
+            width: 50px; height: 50px; border: none; border-radius: 50%;
+            cursor: default; display: inline-flex; align-items: center;
+            justify-content: center; font-size: 28px; background: transparent;
+        }
+        .bilan-excellent { background: #d6ede3; }
+        .bilan-bon       { background: #f5edcc; }
+        .bilan-moyen     { background: #f0ddc4; }
+        .bilan-mauvais   { background: #f0d0cc; }
+
+        /* ── Boutons actions ── */
+        .btn-prof-principal { display: none; }
+
+        .actions {
+            padding: 10px 20px; background: #f5f0eb;
+            display: flex; gap: 10px; justify-content: center;
+            border-top: 2px solid #e8ddd4; flex-wrap: wrap;
+        }
+        .btn {
+            padding: 8px 18px; border: none; border-radius: 6px;
+            cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.3s;
+        }
+        .btn-reset { background: #8a3a2e; color: white; }
+        .btn-reset:hover {
+            background: #6e2e24; transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(138,58,46,0.3);
+        }
+        .btn-export { background: #7a6a5a; color: white; }
+        .btn-export:hover {
+            background: #4a3f35; color: #f5f0eb;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(74,63,53,0.3);
+        }
+
+        /* ── Section notes ── */
+        .note-section { padding: 10px 20px; background: #fff; }
+        .note-section h3 { font-size: 14px; margin-bottom: 8px; color: #4a3f35; }
+        .note-input-container { position: relative; }
+        .note-section textarea {
+            width: 100%; padding: 10px; padding-bottom: 35px;
+            border: 2px solid #e8ddd4; border-radius: 6px;
+            font-family: inherit; font-size: 12px; resize: vertical; min-height: 80px;
+        }
+        .note-section textarea:focus { outline: none; border-color: #7a6a5a; }
+        .note-add-btn {
+            position: absolute; bottom: 8px; right: 8px;
+            background: #7a6a5a; color: white; border: none;
+            padding: 6px 12px; border-radius: 5px;
+            cursor: pointer; font-size: 11px; font-weight: 600; transition: all 0.2s;
+        }
+        .note-add-btn:hover { background: #4a3f35; transform: translateY(-1px); }
+
+        .notes-history {
+            margin-top: 10px; max-height: 150px; overflow-y: auto;
+            border: 1px solid #e8ddd4; border-radius: 6px;
+            padding: 10px; background: #f5f0eb; display: none;
+        }
+        .notes-history.has-notes { display: block; }
+
+        .note-item {
+            padding: 8px 10px; margin-bottom: 8px;
+            background: white; border-left: 3px solid #7a6a5a;
+            border-radius: 4px; font-size: 12px;
+        }
+        .note-item .note-header {
+            font-weight: 600; color: #7a6a5a; margin-bottom: 4px; font-size: 11px;
+        }
+        .note-item .note-content { color: #4a3f35; }
+
+        /* ── Note edit/delete ── */
+        .note-item .note-actions { display: flex; gap: 6px; margin-top: 6px; }
+        .note-edit-btn, .note-delete-btn {
+            border: none; border-radius: 4px; padding: 3px 8px;
+            font-size: 11px; cursor: pointer; transition: all 0.2s;
+        }
+        .note-edit-btn  { background: #7a6a5a; color: white; }
+        .note-edit-btn:hover { background: #4a3f35; }
+        .note-delete-btn { background: #8a3a2e; color: white; }
+        .note-delete-btn:hover { background: #6e2e24; }
+        .note-edit-area {
+            width: 100%; padding: 6px; border: 1px solid #7a6a5a;
+            border-radius: 4px; font-size: 12px; font-family: inherit;
+            resize: vertical; margin-top: 4px;
+        }
+        .note-save-btn {
+            background: #3d9970; color: white; border: none;
+            border-radius: 4px; padding: 3px 8px; font-size: 11px;
+            cursor: pointer; margin-right: 4px;
+        }
+        .note-save-btn:hover { background: #2e7d56; }
+        .note-cancel-btn {
+            background: #e8ddd4; color: #4a3f35; border: none;
+            border-radius: 4px; padding: 3px 8px; font-size: 11px; cursor: pointer;
+        }
+
+        /* ── Sauvegarde ── */
+        .save-indicator {
+            position: fixed; top: 20px; right: 20px;
+            background: #3d9970; color: white;
+            padding: 12px 20px; border-radius: 8px; font-weight: 600;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            display: none; animation: slideIn 0.3s ease; z-index: 1000;
+        }
+
+        /* ── Overlay sombre ── */
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(74,63,53,0.6); z-index: 1999; display: none;
+        }
+
+        /* ── Chargement ── */
+        .loading { text-align: center; padding: 40px; color: #7a6a5a; font-size: 18px; }
+
+        /* ── Modal connexion ── */
+        .login-modal {
+            position: fixed; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: white; padding: 40px; border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(74,63,53,0.4);
+            z-index: 3000; min-width: 400px; text-align: center;
+        }
+        .login-modal h2 { color: #4a3f35; margin-bottom: 20px; font-size: 24px; }
+        .login-modal input {
+            width: 100%; padding: 12px 15px; margin-bottom: 15px;
+            border: 2px solid #e8ddd4; border-radius: 8px;
+            font-size: 16px; transition: border-color 0.3s;
+        }
+        .login-modal input:focus { outline: none; border-color: #7a6a5a; }
+        .login-modal button {
+            width: 100%; padding: 12px;
+            background: linear-gradient(135deg, #7a6a5a 0%, #4a3f35 100%);
+            color: white; border: none; border-radius: 8px;
+            font-size: 16px; font-weight: 600; cursor: pointer; transition: transform 0.2s;
+            margin-top: 10px;
+        }
+        .login-modal button:hover { transform: translateY(-2px); }
+        .login-error { color: #8a3a2e; margin-top: 10px; font-size: 14px; display: none; }
+
+        /* ── Info utilisateur ── */
+        .user-info {
+            position: absolute; top: 15px; right: 20px;
+            background: rgba(255,255,255,0.15);
+            padding: 8px 15px; border-radius: 20px;
+            color: #f5f0eb; font-size: 13px;
+            display: none; max-width: 250px; z-index: 100;
+        }
+        .logout-btn {
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.6);
+            color: #f5f0eb; padding: 4px 10px; border-radius: 15px;
+            cursor: pointer; margin-left: 10px; font-size: 12px; transition: all 0.3s;
+        }
+        .logout-btn:hover { background: rgba(255,255,255,0.3); }
+
+        /* ── Modal réinitialisation ── */
+        #resetModal {
+            display: none; position: fixed; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: white; padding: 30px; border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(74,63,53,0.4);
+            z-index: 6000; min-width: 380px; text-align: center;
+        }
+        #resetModal h3 { color: #4a3f35; margin-bottom: 10px; font-size: 18px; }
+        #resetModal p  { color: #7a6a5a; margin-bottom: 20px; font-size: 13px; }
+        .reset-options { display: flex; flex-direction: column; gap: 10px; }
+        .btn-reset-week {
+            padding: 12px; background: #c0732a; color: white; border: none;
+            border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600;
+        }
+        .btn-reset-week:hover { background: #a0611f; }
+        .btn-reset-all {
+            padding: 12px; background: #8a3a2e; color: white; border: none;
+            border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600;
+        }
+        .btn-reset-all:hover { background: #6e2e24; }
+        .btn-reset-cancel {
+            padding: 10px; background: #e8ddd4; color: #4a3f35; border: none;
+            border-radius: 8px; cursor: pointer; font-size: 13px;
+        }
+
+        /* ── Stats CSS (orphelin, inoffensif) ── */
+        #statsContainer { display: none; }
+
+        @keyframes slideIn {
+            from { transform: translateX(100px); opacity: 0; }
+            to   { transform: translateX(0);     opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="overlay" id="overlay"></div>
+    
+    <div class="login-modal" id="loginModal">
+        <h2>🔐 Connexion</h2>
+        <p style="margin-bottom: 20px; color: #666;">Accès réservé aux enseignants</p>
+        <input type="email" id="loginEmail" placeholder="Email professionnel" autocomplete="email">
+        <input type="password" id="loginPassword" placeholder="Mot de passe" autocomplete="current-password">
+        <button onclick="login()">Se connecter</button>
+        <div class="login-error" id="loginError">Email ou mot de passe incorrect</div>
+        <p style="margin-top: 20px; font-size: 12px; color: #999;">
+            Contactez l'administrateur pour obtenir un compte
+        </p>
+    </div>
+    
+    <div class="save-indicator" id="saveIndicator">✓ Sauvegardé</div>
+    
+    <div class="user-info" id="userInfo">
+        <span id="userEmail"></span>
+        <button class="logout-btn" onclick="logout()">Déconnexion</button>
+    </div>
+    
+    <div class="container" id="appContainer" style="display: none;">
+        <div class="header">
+            <h1>📋 Fiche de suivi hebdomadaire - Classe de 4ème</h1>
+            <div class="week-selector">
+                <button onclick="changeWeek(-1)">◀ Semaine précédente</button>
+                <span id="weekDisplay"></span>
+                <button onclick="changeWeek(1)">Semaine suivante ▶</button>
+            </div>
+        </div>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-box retard"></div>
+                <span>Retard</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box travail"></div>
+                <span>Travail non fait</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box materiel"></div>
+                <span>Oubli matériel</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box bavardage"></div>
+                <span>Bavardages</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box perturbation"></div>
+                <span>Perturbe le cours</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-box progres"></div>
+                <span>Attitude en progrès</span>
+            </div>
+        </div>
+        
+        <div id="loadingDiv" class="loading">Chargement des données...</div>
+        
+        <div id="mainContent" style="display: none;">
+            <div class="table-container">
+                <table id="suiviTable">
+                    <thead>
+                        <tr>
+                            <th>Élève</th>
+                            <th>Retard</th>
+                            <th>Travail<br>non fait</th>
+                            <th>Oubli<br>matériel</th>
+                            <th>Bavardages</th>
+                            <th>Perturbe<br>le cours</th>
+                            <th>Bilan<br>semaine</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+            
+            <div class="note-section">
+                <h3 style="margin-bottom: 10px; color: #2d3436;">📝 Ajouter une note</h3>
+                <div class="note-input-container">
+                    <textarea id="weekNotesInput" placeholder="Écrivez votre remarque ici..."></textarea>
+                    <button class="note-add-btn" onclick="addNote()">✓ Ajouter</button>
+                </div>
+                <div class="notes-history" id="notesHistory"></div>
+            </div>
+            
+            <div class="actions">
+                <button class="btn btn-export btn-prof-principal" onclick="exportData()" style="display:none;">📊 Exporter CSV</button>
+                <button class="btn btn-export btn-prof-principal" onclick="exportPDF()" style="display:none;">📄 Générer PDF</button>
+                <button class="btn btn-export btn-prof-principal" onclick="showStatsUsage()" style="display:none;background:#6c5ce7;">👥 Stats utilisation</button>
+                <button class="btn btn-export btn-prof-principal" onclick="showStatsEleves()" style="display:none;background:#a29bfe;">📊 Stats élèves</button>
+                <button class="btn btn-export btn-prof-principal" onclick="showStatsRemarques()" style="display:none;background:#00b894;">📝 Remarques</button>
+                <button class="btn btn-reset btn-prof-principal" onclick="showResetModal()" style="display:none;">🔄 Réinitialiser</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Overlay 1 : Stats utilisation -->
+    <div id="statsUsageOverlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#f5f5f5;z-index:5000;overflow-y:auto;padding:20px;">
+        <div style="background:linear-gradient(135deg,#667eea,#764ba2);color:white;padding:20px;border-radius:10px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;">
+            <h2 style="margin:0;font-size:20px;">👥 Stats utilisation — Fiche de suivi</h2>
+            <div style="display:flex;gap:8px;">
+                <button onclick="printOverlay('statsUsageOverlay')" style="background:rgba(255,255,255,0.2);border:2px solid white;color:white;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;">🖨️ Imprimer</button>
+                <button onclick="document.getElementById('statsUsageOverlay').style.display='none'" style="background:rgba(255,255,255,0.2);border:2px solid white;color:white;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;">✕ Fermer</button>
+            </div>
+        </div>
+        <div style="background:white;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.08);padding:20px;">
+            <h3 style="color:#667eea;margin-bottom:15px;font-size:16px;">Activité par professeur</h3>
+            <table style="width:100%;border-collapse:collapse;">
+                <thead><tr>
+                    <th style="background:#667eea;color:white;padding:10px 12px;text-align:left;font-size:13px;">Professeur</th>
+                    <th style="background:#667eea;color:white;padding:10px 12px;text-align:left;font-size:13px;">Matière</th>
+                    <th style="background:#667eea;color:white;padding:10px 12px;text-align:left;font-size:13px;">Connexions</th>
+                    <th style="background:#667eea;color:white;padding:10px 12px;text-align:left;font-size:13px;">Actions (clics)</th>
+                    <th style="background:#667eea;color:white;padding:10px 12px;text-align:left;font-size:13px;">Dernière activité</th>
+                </tr></thead>
+                <tbody id="statsUsageTbody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Overlay 2 : Stats élèves (compteurs) -->
+    <div id="statsElevesOverlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#f5f5f5;z-index:5000;overflow-y:auto;padding:20px;">
+        <div style="background:linear-gradient(135deg,#a29bfe,#6c5ce7);color:white;padding:20px;border-radius:10px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;">
+            <h2 style="margin:0;font-size:20px;">📊 Stats élèves — Cumul toutes semaines</h2>
+            <div style="display:flex;gap:8px;">
+                <button onclick="printOverlay('statsElevesOverlay')" style="background:rgba(255,255,255,0.2);border:2px solid white;color:white;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;">🖨️ Imprimer</button>
+                <button onclick="document.getElementById('statsElevesOverlay').style.display='none'" style="background:rgba(255,255,255,0.2);border:2px solid white;color:white;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;">✕ Fermer</button>
+            </div>
+        </div>
+        <div style="background:white;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.08);padding:20px;">
+            <div id="statsElevesContent"></div>
+        </div>
+    </div>
+
+    <!-- Overlay 3 : Remarques textuelles -->
+    <div id="statsRemarquesOverlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#f5f5f5;z-index:5000;overflow-y:auto;padding:20px;">
+        <div style="background:linear-gradient(135deg,#00b894,#00cec9);color:white;padding:20px;border-radius:10px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;">
+            <h2 style="margin:0;font-size:20px;">📝 Remarques — Notes des professeurs</h2>
+            <div style="display:flex;gap:8px;">
+                <button onclick="printOverlay('statsRemarquesOverlay')" style="background:rgba(255,255,255,0.2);border:2px solid white;color:white;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;">🖨️ Imprimer</button>
+                <button onclick="document.getElementById('statsRemarquesOverlay').style.display='none'" style="background:rgba(255,255,255,0.2);border:2px solid white;color:white;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;">✕ Fermer</button>
+            </div>
+        </div>
+        <div style="background:white;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.08);padding:20px;">
+            <div id="remarquesList"></div>
+        </div>
+    </div>
+
+    <!-- Modal réinitialisation -->
+    <div id="resetModal" style="display:none">
+        <h3>🔄 Réinitialisation</h3>
+        <p>Choisissez le type de réinitialisation :</p>
+        <div class="reset-options">
+            <button class="btn-reset-week" onclick="doReset('week')">📅 Réinitialiser la semaine actuelle</button>
+            <button class="btn-reset-all" onclick="doReset('all')">⚠️ Tout réinitialiser (remise à zéro complète)</button>
+            <button class="btn-reset-cancel" onclick="closeResetModal()">Annuler</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getFirestore, doc, setDoc, getDoc, getDocFromServer, deleteDoc, getDocs, collection, writeBatch } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyA4BpxaadwjKgiJH3rwOdk3WaJ9m5G9qqw",
+            authDomain: "suivi-classe-4eme.firebaseapp.com",
+            projectId: "suivi-classe-4eme",
+            storageBucket: "suivi-classe-4eme.firebasestorage.app",
+            messagingSenderId: "1088897454236",
+            appId: "1:1088897454236:web:273a6ddf50ab9c0b605d59"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        
+        // Email du professeur principal
+        const PROF_PRINCIPAL_EMAIL = 's.durand@collegejj.fr';
+        
+        const matieres = {
+            's.durand@collegejj.fr': 'Espagnol',
+            'm.maurice@collegejj.fr': 'Mathématiques',
+            'n.pradier@collegejj.fr': 'Anglais',
+            'v.prieto@collegejj.fr': 'Physique-Chimie',
+            'f.cade@collegejj.fr': 'EPS',
+            'b.crouzier@collegejj.fr': 'Technologie',
+            'j.giraut@collegejj.fr': 'Français',
+            'e.marquez@collejj.fr': 'Arts plastiques',
+            's.marty@collegejj.fr': 'SVT',
+            's.richardleveque@collegejj.fr': 'Histoire-Géo',
+            'm.dumesnil@collegejj.fr': 'Histoire-Géo',
+            'm.groux@collegejj.fr': 'Éducation musicale'
+        };
+        
+        function getFormattedName(email) {
+            if (!email) return 'Professeur';
+            const namePart = email.split('@')[0];
+            const parts = namePart.split('.');
+            if (parts.length >= 2) {
+                const initiale = parts[0].charAt(0).toUpperCase();
+                const nom = parts[parts.length - 1].charAt(0).toUpperCase() + parts[parts.length - 1].slice(1);
+                return `${initiale}. ${nom}`;
+            }
+            return email.split('@')[0];
+        }
+        
+        function getMatiere(email) {
+            return matieres[email] || 'Enseignant';
+        }
+
+        const eleves = [
+            'Nayid', 'Aurélien', 'Vincenzo', 'Niels', 'Noam', 'Yanis', 'Mouad', 
+            'Axel', 'Emmy', 'Alexie', 'Roman', 'Yasser', 'Rose', 'Louise', 
+            'Lyanna', 'Maéva', 'Castille', 'Flora', 'Daphnée', 'Rayan', 'Karim', 
+            'Romane', 'Léa', 'Younès', 'Gabriel', 'Victoria', 'Zoé', 'Amalia', 
+            'Léana', 'Virgile'
+        ];
+        
+        const categories = ['retard', 'travail', 'materiel', 'bavardage', 'perturbation', 'progres'];
+        
+        let currentWeekOffset = 0;
+        let saveTimeout = null;
+        
+        function initAuth() {
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    showApp();
+                    const formattedName = getFormattedName(user.email);
+                    document.getElementById('userEmail').textContent = formattedName;
+                    document.getElementById('userInfo').style.display = 'block';
+                    logUserActivity(user.email, 'connexion');
+                    
+                    // Afficher les boutons seulement pour le prof principal
+                    if (user.email === PROF_PRINCIPAL_EMAIL) {
+                        const profButtons = document.querySelectorAll('.btn-prof-principal');
+                        profButtons.forEach(btn => {
+                            btn.style.display = 'inline-block';
+                        });
+                    }
+                } else {
+                    showLogin();
+                    document.getElementById('userInfo').style.display = 'none';
+                }
+            });
+        }
+        
+        window.login = async function() {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            const errorDiv = document.getElementById('loginError');
+            
+            if (!email || !password) {
+                errorDiv.textContent = 'Veuillez remplir tous les champs';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+                errorDiv.style.display = 'none';
+            } catch (error) {
+                console.error('Erreur de connexion:', error);
+                errorDiv.textContent = 'Email ou mot de passe incorrect';
+                errorDiv.style.display = 'block';
+            }
+        }
+        
+        window.logout = async function() {
+            try {
+                await signOut(auth);
+            } catch (error) {
+                console.error('Erreur de déconnexion:', error);
+            }
+        }
+        
+        function showLogin() {
+            document.getElementById('loginModal').style.display = 'block';
+            document.getElementById('appContainer').style.display = 'none';
+            document.getElementById('userInfo').style.display = 'none';
+        }
+        
+        function showApp() {
+            document.getElementById('loginModal').style.display = 'none';
+            document.getElementById('appContainer').style.display = 'block';
+            initApp();
+        }
+        
+        function getWeekNumber(date) {
+            const d = new Date(date);
+            d.setHours(0, 0, 0, 0);
+            d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+            const yearStart = new Date(d.getFullYear(), 0, 1);
+            return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+        }
+        
+        function getWeekDates(offset) {
+            const today = new Date();
+            today.setDate(today.getDate() + (offset * 7));
+            const day = today.getDay();
+            const diff = today.getDate() - day + (day === 0 ? -6 : 1);
+            const monday = new Date(today.setDate(diff));
+            const sunday = new Date(monday);
+            sunday.setDate(monday.getDate() + 6);
+            
+            const weekNum = getWeekNumber(monday);
+            return {
+                monday,
+                sunday,
+                weekNum,
+                display: `Semaine ${weekNum} - ${monday.toLocaleDateString('fr-FR')} au ${sunday.toLocaleDateString('fr-FR')}`
+            };
+        }
+        
+        function getCurrentWeekKey() {
+            const week = getWeekDates(currentWeekOffset);
+            return `week_${week.monday.getFullYear()}_${week.weekNum}`;
+        }
+        
+        function updateWeekDisplay() {
+            const week = getWeekDates(currentWeekOffset);
+            document.getElementById('weekDisplay').textContent = week.display;
+        }
+        
+        window.changeWeek = async function(offset) {
+            await saveCurrentWeek();
+            currentWeekOffset += offset;
+            updateWeekDisplay();
+            await loadWeekData();
+        }
+        
+        function initTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+            
+            eleves.forEach(eleve => {
+                const row = document.createElement('tr');
+                
+                const firstFiveCategories = categories.slice(0, 5);
+                const firstFiveCells = firstFiveCategories.map(cat => `
+                    <td>
+                        <div class="cell-container">
+                            <button class="btn-minus ${cat}" 
+                                    data-eleve="${eleve}" 
+                                    data-category="${cat}"
+                                    onclick="changeCount(this, -1)">
+                                -
+                            </button>
+                            <span class="count-display ${cat}" id="count-${eleve}-${cat}">0</span>
+                            <button class="btn-plus ${cat}" 
+                                    data-eleve="${eleve}" 
+                                    data-category="${cat}"
+                                    onclick="changeCount(this, 1)">
+                                +
+                            </button>
+                        </div>
+                    </td>
+                `).join('');
+                
+                const lastCategory = categories[5];
+                const lastCell = `
+                    <td>
+                        <div class="progres-simple" 
+                             data-eleve="${eleve}" 
+                             data-category="${lastCategory}"
+                             id="bilan-${eleve}">
+                            😊
+                        </div>
+                    </td>
+                `;
+                
+                row.innerHTML = `
+                    <td>${eleve}</td>
+                    ${firstFiveCells}
+                    ${lastCell}
+                `;
+                tbody.appendChild(row);
+            });
+        }
+        
+        window.changeCount = function(button, change) {
+            const eleve = button.dataset.eleve;
+            const category = button.dataset.category;
+            const countElement = document.getElementById(`count-${eleve}-${category}`);
+            let currentCount = parseInt(countElement.textContent) || 0;
+            
+            let newCount = currentCount + change;
+            if (newCount < 0) newCount = 0;
+            
+            countElement.textContent = newCount;
+            updateCellColor(countElement, category, newCount);
+            
+            if (change > 0) {
+                countElement.style.transform = 'scale(1.2)';
+                setTimeout(() => {
+                    countElement.style.transform = 'scale(1)';
+                }, 200);
+            }
+            
+            // Mettre à jour le bilan de la semaine
+            updateBilanSemaine(eleve);
+            
+            if (auth.currentUser) {
+                logUserActivity(auth.currentUser.email, 'clic');
+            }
+            
+            debounceSave();
+        }
+        
+        function updateBilanSemaine(eleve) {
+            // Calculer le total des remarques négatives (5 premières catégories)
+            let total = 0;
+            categories.slice(0, 5).forEach(cat => {
+                const countElement = document.getElementById(`count-${eleve}-${cat}`);
+                total += parseInt(countElement.textContent) || 0;
+            });
+            
+            const bilanElement = document.getElementById(`bilan-${eleve}`);
+            
+            // Réinitialiser les classes
+            bilanElement.className = 'progres-simple';
+            
+            // Appliquer le bon emoji et la bonne classe selon le total
+            if (total === 0) {
+                bilanElement.textContent = '😊';
+                bilanElement.classList.add('bilan-excellent');
+            } else if (total < 5) {
+                bilanElement.textContent = '😊';
+                bilanElement.classList.add('bilan-excellent');
+            } else if (total < 8) {
+                bilanElement.textContent = '😐';
+                bilanElement.classList.add('bilan-bon');
+            } else if (total <= 10) {
+                bilanElement.textContent = '😟';
+                bilanElement.classList.add('bilan-moyen');
+            } else {
+                bilanElement.textContent = '😡';
+                bilanElement.classList.add('bilan-mauvais');
+            }
+        }
+        
+        function updateCellColor(element, category, count) {
+            element.classList.remove('active');
+            if (count > 0) {
+                element.classList.add('active');
+            }
+        }
+        
+        function debounceSave() {
+            if (saveTimeout) clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(() => {
+                saveCurrentWeek();
+            }, 1000);
+        }
+        
+        async function saveCurrentWeek() {
+            const weekKey = getCurrentWeekKey();
+            const data = {};
+            
+            categories.slice(0, 5).forEach(cat => {
+                eleves.forEach(eleve => {
+                    const countElement = document.getElementById(`count-${eleve}-${cat}`);
+                    const count = parseInt(countElement.textContent) || 0;
+                    data[`${eleve}_${cat}`] = {
+                        count: count,
+                        active: count > 0
+                    };
+                });
+            });
+            
+            // getDocFromServer pour éviter d'écraser des notes avec une version en cache
+            let notes = [];
+            try {
+                const existingDoc = await getDocFromServer(doc(db, 'weeks', weekKey));
+                if (existingDoc.exists() && Array.isArray(existingDoc.data().notes)) {
+                    notes = existingDoc.data().notes;
+                }
+            } catch(e) { console.warn('getDocFromServer failed, using getDoc:', e); 
+                const existingDoc = await getDoc(doc(db, 'weeks', weekKey));
+                if (existingDoc.exists() && Array.isArray(existingDoc.data().notes)) {
+                    notes = existingDoc.data().notes;
+                }
+            }
+            
+            try {
+                await setDoc(doc(db, 'weeks', weekKey), {
+                    data: data,
+                    notes: notes,
+                    lastUpdate: new Date().toISOString(),
+                    lastUpdatedBy: auth.currentUser ? auth.currentUser.email : 'unknown'
+                });
+                showSaveIndicator();
+            } catch (error) {
+                console.error('Erreur de sauvegarde:', error);
+            }
+        }
+        
+        window.addNote = async function() {
+            const noteInput = document.getElementById('weekNotesInput');
+            const noteText = noteInput.value.trim();
+            
+            if (!noteText) {
+                alert('Veuillez écrire une remarque avant d\'ajouter.');
+                return;
+            }
+            
+            if (!auth.currentUser) {
+                alert('Vous devez être connecté pour ajouter une note.');
+                return;
+            }
+            
+            const matiere = getMatiere(auth.currentUser.email);
+            const now = new Date();
+            
+            const newNote = {
+                id: 'note_' + Date.now() + '_' + Math.random().toString(36).substr(2,6),
+                matiere: matiere,
+                content: noteText,
+                timestamp: now.toISOString(),
+                email: auth.currentUser.email
+            };
+            
+            const weekKey = getCurrentWeekKey();
+            
+            try {
+                const docSnap = await getDoc(doc(db, 'weeks', weekKey));
+                let notes = [];
+                let data = {};
+                
+                if (docSnap.exists()) {
+                    notes = docSnap.data().notes || [];
+                    data = docSnap.data().data || {};
+                }
+                
+                notes.push(newNote);
+                
+                await setDoc(doc(db, 'weeks', weekKey), {
+                    data: data,
+                    notes: notes,
+                    lastUpdate: now.toISOString(),
+                    lastUpdatedBy: auth.currentUser.email
+                });
+                
+                noteInput.value = '';
+                displayNotes(notes);
+                logUserActivity(auth.currentUser.email, 'clic');
+                showSaveIndicator();
+            } catch (error) {
+                console.error('Erreur ajout note:', error);
+                alert('Erreur lors de l\'ajout de la note.');
+            }
+        }
+        
+        function displayNotes(notes) {
+            const historyDiv = document.getElementById('notesHistory');
+            
+            if (!notes || notes.length === 0) {
+                historyDiv.classList.remove('has-notes');
+                historyDiv.innerHTML = '';
+                return;
+            }
+            
+            historyDiv.classList.add('has-notes');
+            
+            const sortedNotes = [...notes].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            const currentEmail = auth.currentUser ? auth.currentUser.email : null;
+            
+            historyDiv.innerHTML = sortedNotes.map(note => {
+                const date = new Date(note.timestamp);
+                const dateStr = date.toLocaleDateString('fr-FR', {
+                    day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+                });
+                const noteId = note.id || note.timestamp;
+                const isOwner = currentEmail && note.email === currentEmail;
+                const actionsHTML = isOwner
+                    ? `<div class="note-actions">
+                           <button class="note-edit-btn" onclick="startEditNote('${noteId}')">✏️ Modifier</button>
+                           <button class="note-delete-btn" onclick="deleteNote('${noteId}')">🗑️ Supprimer</button>
+                       </div>`
+                    : '';
+                return `
+                    <div class="note-item" data-note-id="${noteId}">
+                        <div class="note-header">[${note.matiere}] - ${dateStr}</div>
+                        <div class="note-content">${note.content}</div>
+                        ${actionsHTML}
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        window.startEditNote = function(noteId) {
+            const noteItem = document.querySelector('.note-item[data-note-id="' + noteId + '"]');
+            if (!noteItem) return;
+            const contentDiv = noteItem.querySelector('.note-content');
+            contentDiv.dataset.original = contentDiv.textContent;
+            contentDiv.innerHTML =
+                '<textarea class="note-edit-area" id="editArea-' + noteId + '"></textarea>' +
+                '<div style="margin-top:4px;">' +
+                '<button class="note-save-btn" onclick="saveEditNote(\'' + noteId + '\')">✓ Enregistrer</button>' +
+                '<button class="note-cancel-btn" onclick="cancelEditNote(\'' + noteId + '\')">Annuler</button>' +
+                '</div>';
+            document.getElementById('editArea-' + noteId).value = contentDiv.dataset.original;
+            const actions = noteItem.querySelector('.note-actions');
+            if (actions) actions.style.display = 'none';
+        }
+
+        window.cancelEditNote = function(noteId) {
+            const noteItem = document.querySelector('.note-item[data-note-id="' + noteId + '"]');
+            if (!noteItem) return;
+            const contentDiv = noteItem.querySelector('.note-content');
+            contentDiv.textContent = contentDiv.dataset.original || '';
+            const actions = noteItem.querySelector('.note-actions');
+            if (actions) actions.style.display = 'flex';
+        }
+
+        window.saveEditNote = async function(noteId) {
+            const weekKey = getCurrentWeekKey();
+            const textarea = document.getElementById('editArea-' + noteId);
+            if (!textarea) return;
+            const newText = textarea.value.trim();
+            if (!newText) { alert('Le contenu ne peut pas être vide.'); return; }
+            try {
+                const docSnap = await getDoc(doc(db, 'weeks', weekKey));
+                if (!docSnap.exists()) return;
+                const weekData = docSnap.data();
+                const notes = (weekData.notes || []).map(n => {
+                    const nId = n.id || n.timestamp;
+                    return nId === noteId ? { ...n, content: newText } : n;
+                });
+                await setDoc(doc(db, 'weeks', weekKey), { ...weekData, notes });
+                displayNotes(notes);
+                showSaveIndicator();
+            } catch(e) { console.error(e); alert('Erreur lors de la modification.'); }
+        }
+
+        window.deleteNote = async function(noteId) {
+            if (!confirm('Supprimer cette remarque ?')) return;
+            const weekKey = getCurrentWeekKey();
+            try {
+                const docSnap = await getDoc(doc(db, 'weeks', weekKey));
+                if (!docSnap.exists()) return;
+                const weekData = docSnap.data();
+                const notes = (weekData.notes || []).filter(n => (n.id || n.timestamp) !== noteId);
+                await setDoc(doc(db, 'weeks', weekKey), { ...weekData, notes });
+                displayNotes(notes);
+                showSaveIndicator();
+            } catch(e) { console.error(e); alert('Erreur lors de la suppression.'); }
+        }
+
+        async function loadWeekData() {
+            const weekKey = getCurrentWeekKey();
+            
+            try {
+                const docSnap = await getDoc(doc(db, 'weeks', weekKey));
+                
+                if (docSnap.exists()) {
+                    const weekData = docSnap.data();
+                    const data = weekData.data || {};
+                    const notes = weekData.notes || [];
+                    
+                    categories.slice(0, 5).forEach(cat => {
+                        eleves.forEach(eleve => {
+                            const countElement = document.getElementById(`count-${eleve}-${cat}`);
+                            const key = `${eleve}_${cat}`;
+                            if (data[key]) {
+                                const count = data[key].count;
+                                countElement.textContent = count;
+                                updateCellColor(countElement, cat, count);
+                            } else {
+                                countElement.textContent = '0';
+                                updateCellColor(countElement, cat, 0);
+                            }
+                        });
+                    });
+                    
+                    // Mettre à jour tous les bilans
+                    eleves.forEach(eleve => {
+                        updateBilanSemaine(eleve);
+                    });
+                    
+                    displayNotes(notes);
+                } else {
+                    categories.slice(0, 5).forEach(cat => {
+                        eleves.forEach(eleve => {
+                            const countElement = document.getElementById(`count-${eleve}-${cat}`);
+                            countElement.textContent = '0';
+                            updateCellColor(countElement, cat, 0);
+                        });
+                    });
+                    
+                    eleves.forEach(eleve => {
+                        updateBilanSemaine(eleve);
+                    });
+                    
+                    displayNotes([]);
+                }
+            } catch (error) {
+                console.error('Erreur de chargement:', error);
+            }
+        }
+        
+        function showSaveIndicator() {
+            const indicator = document.getElementById('saveIndicator');
+            indicator.style.display = 'block';
+            setTimeout(() => {
+                indicator.style.display = 'none';
+            }, 2000);
+        }
+        
+        async function logUserActivity(email, actionType) {
+            if (!email) return;
+            
+            try {
+                const userStatsRef = doc(db, 'user_stats', email);
+                const userStatsSnap = await getDoc(userStatsRef);
+                
+                let stats = {
+                    email: email,
+                    totalActions: 0,
+                    totalConnexions: 0,
+                    lastActivity: new Date().toISOString()
+                };
+                
+                if (userStatsSnap.exists()) {
+                    stats = userStatsSnap.data();
+                }
+                
+                if (actionType === 'connexion') {
+                    stats.totalConnexions = (stats.totalConnexions || 0) + 1;
+                } else if (actionType === 'clic') {
+                    stats.totalActions = (stats.totalActions || 0) + 1;
+                }
+                
+                stats.lastActivity = new Date().toISOString();
+                
+                await setDoc(userStatsRef, stats);
+            } catch (error) {
+                console.error('Erreur log activité:', error);
+            }
+        }
+        
+        let allRemarksCache = [];
+
+        // ── Vérification accès prof principal ───────────────────────────────
+        async function checkProfPrincipal() {
+            if (!auth.currentUser || auth.currentUser.email !== PROF_PRINCIPAL_EMAIL) {
+                alert('❌ Accès réservé au professeur principal uniquement');
+                return false;
+            }
+            const pwd = prompt('🔐 Mot de passe :');
+            if (pwd !== 'Prof2024') {
+                if (pwd !== null) alert('❌ Mot de passe incorrect');
+                return false;
+            }
+            return true;
+        }
+
+        // ── Bouton 1 : Stats utilisation ─────────────────────────────────────
+        window.showStatsUsage = async function() {
+            if (!await checkProfPrincipal()) return;
+
+            const indicator = document.getElementById('saveIndicator');
+            indicator.textContent = '⏳ Chargement...';
+            indicator.style.display = 'block';
+
+            try {
+                let totalConnexions = 0, totalActions = 0;
+                const profs = [];
+                for (const [email, matiere] of Object.entries(matieres)) {
+                    try {
+                        const snap = await getDoc(doc(db, 'user_stats', email));
+                        let s = { email, matiere, name: getFormattedName(email), connexions: 0, actions: 0, lastActivity: null };
+                        if (snap.exists()) {
+                            s.connexions = snap.data().totalConnexions || 0;
+                            s.actions    = snap.data().totalActions || 0;
+                            s.lastActivity = snap.data().lastActivity;
+                        }
+                        profs.push(s);
+                        totalConnexions += s.connexions;
+                        totalActions    += s.actions;
+                    } catch(e) { console.error(e); }
+                }
+                profs.sort((a, b) => b.actions - a.actions);
+
+                const tdStyle = 'padding:10px 12px;border-bottom:1px solid #e0e0e0;font-size:13px;';
+                document.getElementById('statsUsageTbody').innerHTML =
+                    profs.map(p => {
+                        const cls = p.actions > 20 ? 'color:#00b894;font-weight:bold'
+                                  : p.actions > 5  ? 'color:#e17055'
+                                  : p.actions > 0  ? 'color:#d63031;font-weight:bold'
+                                  : 'color:#999;font-style:italic';
+                        const last = p.lastActivity ? new Date(p.lastActivity).toLocaleString('fr-FR') : 'Jamais connecté';
+                        return '<tr>'
+                            + '<td style="' + tdStyle + '">' + p.name + '</td>'
+                            + '<td style="' + tdStyle + '">' + p.matiere + '</td>'
+                            + '<td style="' + tdStyle + '">' + p.connexions + '</td>'
+                            + '<td style="' + tdStyle + ';' + cls + '">' + p.actions + '</td>'
+                            + '<td style="' + tdStyle + '">' + last + '</td>'
+                            + '</tr>';
+                    }).join('')
+                    + '<tr style="background:#f0f0f0;font-weight:bold;">'
+                    + '<td style="' + tdStyle + '" colspan="2">TOTAL</td>'
+                    + '<td style="' + tdStyle + '">' + totalConnexions + '</td>'
+                    + '<td style="' + tdStyle + '">' + totalActions + '</td>'
+                    + '<td style="' + tdStyle + '">-</td></tr>';
+
+                indicator.style.display = 'none';
+                document.getElementById('statsUsageOverlay').style.display = 'block';
+            } catch(e) {
+                console.error(e);
+                indicator.style.display = 'none';
+                alert('❌ Erreur lors du chargement');
+            }
+        }
+
+        // ── Bouton 2 : Stats élèves (compteurs par élève sur période) ─────────
+        window.showStatsEleves = async function() {
+            if (!await checkProfPrincipal()) return;
+
+            const indicator = document.getElementById('saveIndicator');
+            indicator.textContent = '⏳ Chargement...';
+            indicator.style.display = 'block';
+
+            try {
+                const weeksSnap = await getDocs(collection(db, 'weeks'));
+                // Accumuler les compteurs par élève sur toutes les semaines
+                const totaux = {};
+                eleves.forEach(e => {
+                    totaux[e] = { retard:0, travail:0, materiel:0, bavardage:0, perturbation:0 };
+                });
+                weeksSnap.forEach(weekDoc => {
+                    const data = weekDoc.data().data || {};
+                    eleves.forEach(e => {
+                        ['retard','travail','materiel','bavardage','perturbation'].forEach(cat => {
+                            const key = e + '_' + cat;
+                            if (data[key]) totaux[e][cat] += (data[key].count || 0);
+                        });
+                    });
+                });
+
+                // Trier par total décroissant
+                const sorted = eleves.slice().sort((a,b) => {
+                    const sumA = Object.values(totaux[a]).reduce((s,v)=>s+v,0);
+                    const sumB = Object.values(totaux[b]).reduce((s,v)=>s+v,0);
+                    return sumB - sumA;
+                });
+
+                const tdS = 'padding:8px 10px;border-bottom:1px solid #e0e0e0;font-size:13px;text-align:center;';
+                const tdL = 'padding:8px 10px;border-bottom:1px solid #e0e0e0;font-size:13px;text-align:left;font-weight:600;';
+                const thS = 'background:#a29bfe;color:white;padding:10px 8px;font-size:12px;text-align:center;';
+                const thL = 'background:#a29bfe;color:white;padding:10px 10px;font-size:12px;text-align:left;';
+
+                let html = '<table style="width:100%;border-collapse:collapse;">'
+                    + '<thead><tr>'
+                    + '<th style="' + thL + '">Élève</th>'
+                    + '<th style="' + thS + '">Retards</th>'
+                    + '<th style="' + thS + '">Travail non fait</th>'
+                    + '<th style="' + thS + '">Oubli matériel</th>'
+                    + '<th style="' + thS + '">Bavardages</th>'
+                    + '<th style="' + thS + '">Perturbe</th>'
+                    + '<th style="' + thS + '">TOTAL</th>'
+                    + '</tr></thead><tbody>';
+
+                sorted.forEach(e => {
+                    const t = totaux[e];
+                    const total = Object.values(t).reduce((s,v)=>s+v,0);
+                    const bg = total === 0 ? '' : total < 5 ? 'background:#fff9db;' : total < 15 ? 'background:#ffe5cc;' : 'background:#ffe0e0;';
+                    html += '<tr style="' + bg + '">'
+                        + '<td style="' + tdL + '">' + e + '</td>'
+                        + '<td style="' + tdS + '">' + (t.retard||0) + '</td>'
+                        + '<td style="' + tdS + '">' + (t.travail||0) + '</td>'
+                        + '<td style="' + tdS + '">' + (t.materiel||0) + '</td>'
+                        + '<td style="' + tdS + '">' + (t.bavardage||0) + '</td>'
+                        + '<td style="' + tdS + '">' + (t.perturbation||0) + '</td>'
+                        + '<td style="' + tdS + ';font-weight:bold;">' + total + '</td>'
+                        + '</tr>';
+                });
+                html += '</tbody></table>';
+
+                document.getElementById('statsElevesContent').innerHTML = html;
+                indicator.style.display = 'none';
+                document.getElementById('statsElevesOverlay').style.display = 'block';
+            } catch(e) {
+                console.error(e);
+                indicator.style.display = 'none';
+                alert('❌ Erreur : ' + e.message);
+            }
+        }
+
+        // ── Bouton 3 : Remarques textuelles ──────────────────────────────────
+        let allRemarquesCache = [];
+
+        window.showStatsRemarques = async function() {
+            if (!await checkProfPrincipal()) return;
+
+            const indicator = document.getElementById('saveIndicator');
+            indicator.textContent = '⏳ Chargement des remarques...';
+            indicator.style.display = 'block';
+
+            try {
+                allRemarquesCache = [];
+                const weeksSnap = await getDocs(collection(db, 'weeks'));
+                weeksSnap.forEach(weekDoc => {
+                    const raw = weekDoc.data().notes;
+                    const notes = Array.isArray(raw) ? raw
+                                : (raw && typeof raw === 'object') ? Object.values(raw) : [];
+                    notes.forEach(n => { if (n && n.content) allRemarquesCache.push({ ...n, weekId: weekDoc.id }); });
+                });
+                allRemarquesCache.sort((a,b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+                renderRemarques(allRemarquesCache);
+
+                indicator.style.display = 'none';
+                document.getElementById('statsRemarquesOverlay').style.display = 'block';
+            } catch(e) {
+                console.error(e);
+                indicator.style.display = 'none';
+                alert('❌ Erreur : ' + e.message);
+            }
+        }
+
+        function renderRemarques(list) {
+            const container = document.getElementById('remarquesList');
+            if (!list || list.length === 0) {
+                container.innerHTML = '<p style="color:#999;font-style:italic;text-align:center;padding:20px;">Aucune remarque pour cette période.</p>';
+                return;
+            }
+            container.innerHTML = list.map(r => {
+                const date = new Date(r.timestamp).toLocaleString('fr-FR');
+                const profName = getFormattedName(r.email);
+                return '<div style="background:#f8f9fa;border-left:3px solid #00b894;border-radius:4px;padding:10px 14px;margin-bottom:10px;font-size:13px;">'
+                    + '<div style="font-weight:600;color:#00b894;margin-bottom:4px;">[' + r.matiere + '] ' + profName + ' — ' + date + '</div>'
+                    + '<div>' + r.content + '</div></div>';
+            }).join('');
+        }
+
+
+
+        window.printOverlay = function(overlayId) {
+            const overlay = document.getElementById(overlayId);
+            const originalBody = document.body.innerHTML;
+            const printContent = overlay.innerHTML;
+            document.body.innerHTML = '<div style="padding:20px;font-family:Segoe UI,Arial,sans-serif;">' + printContent + '</div>';
+            window.print();
+            document.body.innerHTML = originalBody;
+            // Réinitialiser les event listeners en rechargeant
+            window.location.reload();
+        }
+
+        window.showResetModal = function() {
+            if (!auth.currentUser || auth.currentUser.email !== PROF_PRINCIPAL_EMAIL) {
+                alert('❌ Accès réservé au professeur principal uniquement');
+                return;
+            }
+            document.getElementById('resetModal').style.display = 'block';
+            document.getElementById('overlay').style.display = 'block';
+        }
+
+        window.closeResetModal = function() {
+            document.getElementById('resetModal').style.display = 'none';
+            document.getElementById('overlay').style.display = 'none';
+        }
+
+        window.doReset = async function(type) {
+            document.getElementById('resetModal').style.display = 'none';
+            document.getElementById('overlay').style.display = 'none';
+            const password = prompt('⚠️ Confirmation requise\n\nMot de passe du professeur principal :');
+            if (password === null) return;
+            if (password !== 'Prof2024') { alert('❌ Mot de passe incorrect'); return; }
+            if (type === 'week') {
+                if (!confirm('Réinitialiser toutes les données de la semaine actuelle ? Action irréversible.')) return;
+                try {
+                    await deleteDoc(doc(db, 'weeks', getCurrentWeekKey()));
+                    await loadWeekData();
+                    showSaveIndicator();
+                    alert('✓ Semaine réinitialisée avec succès');
+                } catch(e) { console.error(e); alert('❌ Erreur lors de la réinitialisation'); }
+            } else if (type === 'all') {
+                if (!confirm('⚠️ ATTENTION : Ceci efface TOUTES les semaines et toutes les remarques.\n\nCette action est IRRÉVERSIBLE.\n\nÊtes-vous absolument certain ?')) return;
+                try {
+                    const batch = writeBatch(db);
+                    const snap = await getDocs(collection(db, 'weeks'));
+                    snap.forEach(d => batch.delete(d.ref));
+                    await batch.commit();
+                    currentWeekOffset = 0;
+                    updateWeekDisplay();
+                    await loadWeekData();
+                    showSaveIndicator();
+                    alert('✓ Toutes les données ont été réinitialisées');
+                } catch(e) { console.error(e); alert('❌ Erreur lors de la réinitialisation complète'); }
+            }
+        }
+        
+        window.exportData = function() {
+            const week = getWeekDates(currentWeekOffset);
+            let csv = 'Élève;Retards;Travail non fait;Oubli matériel;Bavardages;Perturbe le cours;Bilan\n';
+            
+            eleves.forEach(eleve => {
+                const row = [eleve];
+                
+                categories.slice(0, 5).forEach(cat => {
+                    const countElement = document.getElementById(`count-${eleve}-${cat}`);
+                    row.push(countElement.textContent);
+                });
+                
+                const bilanElement = document.getElementById(`bilan-${eleve}`);
+                row.push(bilanElement.textContent);
+                
+                csv += row.join(';') + '\n';
+            });
+            
+            const notesHistory = document.getElementById('notesHistory');
+            if (notesHistory && notesHistory.innerHTML) {
+                csv += '\nNotes de la semaine:\n';
+                const notes = document.querySelectorAll('.note-item');
+                notes.forEach(note => {
+                    const header = note.querySelector('.note-header').textContent;
+                    const content = note.querySelector('.note-content').textContent;
+                    csv += `${header} : ${content}\n`;
+                });
+            }
+            
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `suivi_semaine_${week.weekNum}.csv`;
+            link.click();
+        }
+        
+        window.exportPDF = function() {
+            const week = getWeekDates(currentWeekOffset);
+            const printWindow = window.open('', '', 'width=1200,height=800');
+            
+            let html = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <title>Suivi Semaine ${week.weekNum}</title>
+                    <style>
+                        @page {
+                            size: A4 landscape;
+                            margin: 1cm;
+                        }
+                        body {
+                            font-family: 'Segoe UI', Arial, sans-serif;
+                            font-size: 11px;
+                            margin: 0;
+                            padding: 20px;
+                        }
+                        h1 {
+                            text-align: center;
+                            color: #667eea;
+                            font-size: 18px;
+                            margin-bottom: 5px;
+                        }
+                        h2 {
+                            text-align: center;
+                            color: #666;
+                            font-size: 14px;
+                            font-weight: normal;
+                            margin-bottom: 20px;
+                        }
+                        table {
+                            width: 100%;
+                            border-collapse: collapse;
+                            margin-bottom: 20px;
+                        }
+                        th, td {
+                            border: 1px solid #ddd;
+                            padding: 6px 4px;
+                            text-align: center;
+                        }
+                        th {
+                            background: #667eea;
+                            color: white;
+                            font-weight: 600;
+                            font-size: 10px;
+                        }
+                        td:first-child {
+                            text-align: left;
+                            font-weight: 600;
+                            padding-left: 8px;
+                        }
+                        .retard { background: #ff6b6b; color: white; font-weight: bold; }
+                        .travail { background: #ffd93d; color: #333; font-weight: bold; }
+                        .materiel { background: #ff9f43; color: white; font-weight: bold; }
+                        .bavardage { background: #a29bfe; color: white; font-weight: bold; }
+                        .perturbation { background: #fd79a8; color: white; font-weight: bold; }
+                        .progres { background: #55efc4; color: #333; font-weight: bold; }
+                        .notes {
+                            margin-top: 20px;
+                            padding: 10px;
+                            border: 1px solid #ddd;
+                            background: #f8f9fa;
+                        }
+                        .notes h3 {
+                            margin: 0 0 10px 0;
+                            font-size: 12px;
+                            color: #667eea;
+                        }
+                        @media print {
+                            body { padding: 0; }
+                            button { display: none; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <h1>📋 Fiche de suivi hebdomadaire - Classe de 4ème</h1>
+                    <h2>${week.display}</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Élève</th>
+                                <th>Retards</th>
+                                <th>Travail non fait</th>
+                                <th>Oubli matériel</th>
+                                <th>Bavardages</th>
+                                <th>Perturbe le cours</th>
+                                <th>Attitude en progrès</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            eleves.forEach(eleve => {
+                html += '<tr><td>' + eleve + '</td>';
+                
+                categories.slice(0, 5).forEach(cat => {
+                    const countElement = document.getElementById(`count-${eleve}-${cat}`);
+                    const count = countElement.textContent;
+                    const cellClass = count > 0 ? cat : '';
+                    html += `<td class="${cellClass}">${count}</td>`;
+                });
+                
+                const progresButton = document.querySelector(`[data-eleve="${eleve}"][data-category="progres"]`);
+                const hasProgres = progresButton.classList.contains('active');
+                html += `<td class="${hasProgres ? 'progres' : ''}">${hasProgres ? '✓' : ''}</td>`;
+                
+                html += '</tr>';
+            });
+            
+            html += '</tbody></table>';
+            
+            const notesHistory = document.getElementById('notesHistory');
+            if (notesHistory && notesHistory.innerHTML) {
+                html += '<div class="notes"><h3>📝 Notes de la semaine :</h3>';
+                const notes = document.querySelectorAll('.note-item');
+                notes.forEach(note => {
+                    const header = note.querySelector('.note-header').textContent;
+                    const content = note.querySelector('.note-content').textContent;
+                    html += `<p><strong>${header}</strong> : ${content}</p>`;
+                });
+                html += '</div>';
+            }
+            
+            html += `
+                    <div style="text-align: center; margin-top: 30px;">
+                        <button onclick="window.print()" style="padding: 10px 20px; font-size: 14px; cursor: pointer; background: #667eea; color: white; border: none; border-radius: 5px;">
+                            🖨️ Imprimer / Sauvegarder en PDF
+                        </button>
+                        <button onclick="window.close()" style="padding: 10px 20px; font-size: 14px; cursor: pointer; background: #e0e0e0; color: #333; border: none; border-radius: 5px; margin-left: 10px;">
+                            ❌ Fermer
+                        </button>
+                    </div>
+                </body>
+                </html>
+            `;
+            
+            printWindow.document.write(html);
+            printWindow.document.close();
+        }
+        
+        document.getElementById('loginPassword').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                login();
+            }
+        });
+        
+        async function initApp() {
+            initTable();
+            updateWeekDisplay();
+            await loadWeekData();
+            document.getElementById('loadingDiv').style.display = 'none';
+            document.getElementById('mainContent').style.display = 'block';
+        }
+        
+        initAuth();
+    </script>
+</body>
+</html>
