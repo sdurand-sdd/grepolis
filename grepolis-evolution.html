@@ -212,36 +212,29 @@
             font-size: 16px;
         }
 
-        .file-input-wrapper {
-            position: relative;
-            overflow: hidden;
-            display: inline-block;
-        }
-
-        .file-input-wrapper input[type=file] {
-            position: absolute;
-            left: -9999px;
-        }
-
-        .file-input-label {
-            padding: 10px 15px;
-            border: 2px solid #ddd;
-            border-radius: 6px;
-            font-size: 14px;
-            background: white;
-            cursor: pointer;
-            transition: border-color 0.3s;
-            display: inline-block;
-        }
-
-        .file-input-label:hover {
-            border-color: #2a5298;
-        }
-
         .file-count {
             font-size: 12px;
             color: #666;
             margin-top: 5px;
+        }
+
+        #loading-status {
+            padding: 8px 12px;
+            background: #f0f0f0;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        #loading-status.loading {
+            color: #2a5298;
+        }
+
+        #loading-status.success {
+            color: #0d7c0d;
+        }
+
+        #loading-status.error {
+            color: #c41e1e;
         }
 
         @media (max-width: 768px) {
@@ -290,15 +283,12 @@
                 </div>
                 
                 <div class="control-group">
-                    <label>Charger fichiers archives :</label>
-                    <div class="file-input-wrapper">
-                        <label for="file-input" class="file-input-label">Sélectionner fichiers</label>
-                        <input type="file" id="file-input" multiple accept=".txt">
-                    </div>
-                    <div id="file-count" class="file-count">Aucun fichier</div>
+                    <label>Statut :</label>
+                    <div id="loading-status" class="file-count">Chargement...</div>
                 </div>
                 
                 <button id="compare-btn" disabled>Comparer</button>
+                <button id="refresh-btn">🔄 Actualiser</button>
             </div>
         </header>
 
@@ -335,49 +325,103 @@
     </div>
 
     <script>
+        const GITHUB_REPO = 'sdurand-sdd/grepolis';
+        const GITHUB_RAW_BASE = `https://raw.githubusercontent.com/${GITHUB_REPO}/main`;
+        const GITHUB_API_BASE = `https://api.github.com/repos/${GITHUB_REPO}/contents`;
+
         let allData = {};
         let availableWeeks = new Set();
 
-        const fileInput = document.getElementById('file-input');
-        const fileCount = document.getElementById('file-count');
+        const loadingStatus = document.getElementById('loading-status');
         const allianceSelect = document.getElementById('alliance-select');
         const week1Select = document.getElementById('week1-select');
         const week2Select = document.getElementById('week2-select');
         const compareBtn = document.getElementById('compare-btn');
+        const refreshBtn = document.getElementById('refresh-btn');
         const oceanGrid = document.getElementById('ocean-grid');
 
-        fileInput.addEventListener('change', handleFileUpload);
         compareBtn.addEventListener('click', compareWeeks);
+        refreshBtn.addEventListener('click', loadAllData);
         allianceSelect.addEventListener('change', updateCompareButton);
         week1Select.addEventListener('change', updateCompareButton);
         week2Select.addEventListener('change', updateCompareButton);
 
-        async function handleFileUpload(event) {
-            const files = Array.from(event.target.files);
-            fileCount.textContent = `${files.length} fichier(s) sélectionné(s)`;
-            
+        // Charger les données au démarrage
+        loadAllData();
+
+        async function loadAllData() {
+            loadingStatus.textContent = 'Chargement des données...';
+            loadingStatus.className = 'file-count loading';
+            compareBtn.disabled = true;
+
             allData = {};
             availableWeeks.clear();
 
-            for (const file of files) {
-                const content = await file.text();
-                const match = file.name.match(/(\w+)_(\d{4})_W(\d{2})\.txt/);
+            try {
+                // Charger les fichiers du dossier archives
+                await loadArchiveFiles();
                 
-                if (match) {
-                    const [, type, year, week] = match;
-                    const weekKey = `${year}_W${week}`;
-                    
-                    if (!allData[weekKey]) {
-                        allData[weekKey] = {};
-                    }
-                    
-                    allData[weekKey][type] = parseFile(content, type);
-                    availableWeeks.add(weekKey);
-                }
+                loadingStatus.textContent = `✓ ${availableWeeks.size} semaines chargées`;
+                loadingStatus.className = 'file-count success';
+                
+                populateWeekSelects();
+                populateAllianceSelect();
+            } catch (error) {
+                console.error('Erreur de chargement:', error);
+                loadingStatus.textContent = '✗ Erreur de chargement';
+                loadingStatus.className = 'file-count error';
             }
+        }
 
-            populateWeekSelects();
-            populateAllianceSelect();
+        async function loadArchiveFiles() {
+            try {
+                // Récupérer la liste des fichiers dans le dossier archives
+                const response = await fetch(`${GITHUB_API_BASE}/archives`);
+                const files = await response.json();
+
+                if (!Array.isArray(files)) {
+                    throw new Error('Impossible de lister les fichiers');
+                }
+
+                // Grouper les fichiers par semaine
+                const weekFiles = {};
+                files.forEach(file => {
+                    const match = file.name.match(/(\w+)_(\d{4})_W(\d{2})\.txt/);
+                    if (match) {
+                        const [, type, year, week] = match;
+                        const weekKey = `${year}_W${week}`;
+                        if (!weekFiles[weekKey]) {
+                            weekFiles[weekKey] = {};
+                        }
+                        weekFiles[weekKey][type] = file.download_url;
+                    }
+                });
+
+                // Charger chaque semaine qui a les 3 fichiers
+                for (const [weekKey, files] of Object.entries(weekFiles)) {
+                    if (files.alliances && files.players && files.towns) {
+                        try {
+                            allData[weekKey] = {
+                                alliances: await fetchAndParse(files.alliances, 'alliances'),
+                                players: await fetchAndParse(files.players, 'players'),
+                                towns: await fetchAndParse(files.towns, 'towns')
+                            };
+                            availableWeeks.add(weekKey);
+                        } catch (error) {
+                            console.error(`Erreur pour ${weekKey}:`, error);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Erreur lors du chargement des archives:', error);
+                throw error;
+            }
+        }
+
+        async function fetchAndParse(url, type) {
+            const response = await fetch(url);
+            const content = await response.text();
+            return parseFile(content, type);
         }
 
         function parseFile(content, type) {
@@ -416,6 +460,12 @@
                 option2.textContent = week.replace('_', ' ');
                 week2Select.appendChild(option2);
             });
+
+            // Présélectionner les 2 semaines les plus récentes
+            if (weeks.length >= 2) {
+                week1Select.value = weeks[1];
+                week2Select.value = weeks[0];
+            }
         }
 
         function populateAllianceSelect() {
