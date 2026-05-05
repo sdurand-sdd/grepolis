@@ -361,7 +361,7 @@
         const refreshBtn = document.getElementById('refresh-btn');
         const oceanGrid = document.getElementById('ocean-grid');
 
-        compareBtn.addEventListener('click', compareWeeks);
+        compareBtn.addEventListener('click', async () => await compareWeeks());
         refreshBtn.addEventListener('click', loadAllData);
         allianceSelect.addEventListener('change', updateCompareButton);
         week1Select.addEventListener('change', updateCompareButton);
@@ -376,7 +376,8 @@
                 allData[weekKey] = {
                     alliances: await fetchAndParse(`${GITHUB_RAW_BASE}/alliances.txt`, 'alliances'),
                     players: await fetchAndParse(`${GITHUB_RAW_BASE}/players.txt`, 'players'),
-                    towns: await fetchAndParse(`${GITHUB_RAW_BASE}/towns.txt`, 'towns')
+                    towns: await fetchAndParse(`${GITHUB_RAW_BASE}/towns.txt`, 'towns'),
+                    loaded: true
                 };
                 availableWeeks.add(weekKey);
             } catch (error) {
@@ -394,13 +395,13 @@
             availableWeeks.clear();
 
             try {
-                // Charger les fichiers actuels de la racine
+                // Charger uniquement les fichiers actuels de la racine
                 await loadCurrentFiles();
                 
-                // Charger les fichiers du dossier archives
-                await loadArchiveFiles();
+                // Lister les semaines disponibles dans archives (sans charger leur contenu)
+                await listArchiveWeeks();
                 
-                loadingStatus.textContent = `✓ Semaine actuelle + ${availableWeeks.size - 1} archives chargées`;
+                loadingStatus.textContent = `✓ Semaine actuelle chargée, ${availableWeeks.size - 1} archives disponibles`;
                 loadingStatus.className = 'file-count success';
                 
                 populateWeekSelects();
@@ -412,7 +413,7 @@
             }
         }
 
-        async function loadArchiveFiles() {
+        async function listArchiveWeeks() {
             try {
                 // Récupérer la liste des fichiers dans le dossier archives
                 const response = await fetch(`${GITHUB_API_BASE}/archives`);
@@ -422,7 +423,7 @@
                     throw new Error('Impossible de lister les fichiers');
                 }
 
-                // Grouper les fichiers par semaine
+                // Identifier les semaines disponibles (qui ont les 3 fichiers)
                 const weekFiles = {};
                 files.forEach(file => {
                     const match = file.name.match(/(\w+)_(\d{4})_W(\d{2})\.txt/);
@@ -436,23 +437,44 @@
                     }
                 });
 
-                // Charger chaque semaine qui a les 3 fichiers
-                for (const [weekKey, files] of Object.entries(weekFiles)) {
+                // Ajouter à la liste uniquement les semaines complètes (avec les 3 fichiers)
+                Object.entries(weekFiles).forEach(([weekKey, files]) => {
                     if (files.alliances && files.players && files.towns) {
-                        try {
-                            allData[weekKey] = {
-                                alliances: await fetchAndParse(files.alliances, 'alliances'),
-                                players: await fetchAndParse(files.players, 'players'),
-                                towns: await fetchAndParse(files.towns, 'towns')
-                            };
-                            availableWeeks.add(weekKey);
-                        } catch (error) {
-                            console.error(`Erreur pour ${weekKey}:`, error);
+                        availableWeeks.add(weekKey);
+                        // Stocker les URLs sans charger le contenu
+                        if (!allData[weekKey]) {
+                            allData[weekKey] = { urls: files, loaded: false };
                         }
                     }
-                }
+                });
             } catch (error) {
-                console.error('Erreur lors du chargement des archives:', error);
+                console.error('Erreur lors du listage des archives:', error);
+                throw error;
+            }
+        }
+
+        async function loadWeekData(weekKey) {
+            // Si déjà chargé, ne rien faire
+            if (allData[weekKey] && allData[weekKey].loaded) {
+                return;
+            }
+
+            // Si c'est la semaine actuelle, elle est déjà chargée
+            if (weekKey === 'current') {
+                return;
+            }
+
+            // Charger les données de cette semaine
+            try {
+                const urls = allData[weekKey].urls;
+                allData[weekKey] = {
+                    alliances: await fetchAndParse(urls.alliances, 'alliances'),
+                    players: await fetchAndParse(urls.players, 'players'),
+                    towns: await fetchAndParse(urls.towns, 'towns'),
+                    loaded: true
+                };
+            } catch (error) {
+                console.error(`Erreur lors du chargement de ${weekKey}:`, error);
                 throw error;
             }
         }
@@ -626,80 +648,101 @@
             return '#4a90e2';
         }
 
-        function compareWeeks() {
+        async function compareWeeks() {
             const allianceId = allianceSelect.value;
             const week1 = week1Select.value;
             const week2 = week2Select.value;
 
-            if (!allData[week1] || !allData[week2]) {
-                oceanGrid.innerHTML = '<div class="info-message">Données manquantes pour les semaines sélectionnées.</div>';
+            if (!week1 || !week2) {
+                oceanGrid.innerHTML = '<div class="info-message">Veuillez sélectionner deux semaines à comparer.</div>';
                 return;
             }
 
-            const stats1 = calculateOceanStats(allData[week1], allianceId);
-            const stats2 = calculateOceanStats(allData[week2], allianceId);
-            const rankings1 = calculateOceanRankings(allData[week1]);
-            const rankings2 = calculateOceanRankings(allData[week2]);
+            // Afficher un message de chargement
+            oceanGrid.innerHTML = '<div class="info-message">⏳ Chargement des données...</div>';
+            compareBtn.disabled = true;
 
-            oceanGrid.innerHTML = '';
+            try {
+                // Charger les données des deux semaines si nécessaire
+                await loadWeekData(week1);
+                await loadWeekData(week2);
 
-            // Générer la grille : ligne par ligne (y=0 à 9), colonne par colonne (x=0 à 9)
-            for (let y = 0; y < 10; y++) {
-                for (let x = 0; x < 10; x++) {
-                    const ocean = x * 10 + y; // x=0,y=0 -> 00 | x=1,y=0 -> 10 | x=0,y=1 -> 01
-                    
-                    const cell = document.createElement('div');
-                    cell.className = 'ocean-cell';
-
-                    const oceanNum = document.createElement('div');
-                    oceanNum.className = 'ocean-number';
-                    oceanNum.textContent = ocean.toString().padStart(2, '0');
-
-                    const data1 = stats1[ocean] || { towns: 0, points: 0 };
-                    const data2 = stats2[ocean] || { towns: 0, points: 0 };
-                    
-                    const townsDelta = data2.towns - data1.towns;
-                    const pointsDelta = data2.points - data1.points;
-
-                    const rank1 = rankings1[ocean]?.[allianceId] || 0;
-                    const rank2 = rankings2[ocean]?.[allianceId] || 0;
-                    const rankDelta = rank1 - rank2;
-
-                    cell.style.backgroundColor = getColorForDelta(townsDelta, pointsDelta);
-
-                    // Ajouter la couronne si l'alliance est #1 dans la mer pour la semaine 2
-                    if (rank2 === 1) {
-                        const crown = document.createElement('div');
-                        crown.className = 'crown-icon';
-                        crown.textContent = '👑';
-                        cell.appendChild(crown);
-                    }
-
-                    const deltaInfo = document.createElement('div');
-                    deltaInfo.className = 'ocean-delta';
-                    
-                    const townsClass = townsDelta > 0 ? 'delta-positive' : townsDelta < 0 ? 'delta-negative' : 'delta-neutral';
-                    const pointsClass = pointsDelta > 0 ? 'delta-positive' : pointsDelta < 0 ? 'delta-negative' : 'delta-neutral';
-                    
-                    deltaInfo.innerHTML = `
-                        <span class="${townsClass}">Villes: ${townsDelta >= 0 ? '+' : ''}${townsDelta}</span><br>
-                        <span class="${pointsClass}">Pts: ${pointsDelta >= 0 ? '+' : ''}${pointsDelta.toLocaleString()}</span>
-                    `;
-
-                    if (rankDelta !== 0 && rank1 !== 0 && rank2 !== 0) {
-                        const rankChange = document.createElement('div');
-                        rankChange.className = `rank-change ${rankDelta > 0 ? 'rank-up' : 'rank-down'}`;
-                        rankChange.textContent = rankDelta > 0 ? `↑${rankDelta}` : `↓${Math.abs(rankDelta)}`;
-                        cell.appendChild(oceanNum);
-                        cell.appendChild(deltaInfo);
-                        cell.appendChild(rankChange);
-                    } else {
-                        cell.appendChild(oceanNum);
-                        cell.appendChild(deltaInfo);
-                    }
-
-                    oceanGrid.appendChild(cell);
+                if (!allData[week1] || !allData[week2]) {
+                    oceanGrid.innerHTML = '<div class="info-message">Données manquantes pour les semaines sélectionnées.</div>';
+                    compareBtn.disabled = false;
+                    return;
                 }
+
+                const stats1 = calculateOceanStats(allData[week1], allianceId);
+                const stats2 = calculateOceanStats(allData[week2], allianceId);
+                const rankings1 = calculateOceanRankings(allData[week1]);
+                const rankings2 = calculateOceanRankings(allData[week2]);
+
+                oceanGrid.innerHTML = '';
+
+                // Générer la grille : ligne par ligne (y=0 à 9), colonne par colonne (x=0 à 9)
+                for (let y = 0; y < 10; y++) {
+                    for (let x = 0; x < 10; x++) {
+                        const ocean = x * 10 + y; // x=0,y=0 -> 00 | x=1,y=0 -> 10 | x=0,y=1 -> 01
+                        
+                        const cell = document.createElement('div');
+                        cell.className = 'ocean-cell';
+
+                        const oceanNum = document.createElement('div');
+                        oceanNum.className = 'ocean-number';
+                        oceanNum.textContent = ocean.toString().padStart(2, '0');
+
+                        const data1 = stats1[ocean] || { towns: 0, points: 0 };
+                        const data2 = stats2[ocean] || { towns: 0, points: 0 };
+                        
+                        const townsDelta = data2.towns - data1.towns;
+                        const pointsDelta = data2.points - data1.points;
+
+                        const rank1 = rankings1[ocean]?.[allianceId] || 0;
+                        const rank2 = rankings2[ocean]?.[allianceId] || 0;
+                        const rankDelta = rank1 - rank2;
+
+                        cell.style.backgroundColor = getColorForDelta(townsDelta, pointsDelta);
+
+                        // Ajouter la couronne si l'alliance est #1 dans la mer pour la semaine 2
+                        if (rank2 === 1) {
+                            const crown = document.createElement('div');
+                            crown.className = 'crown-icon';
+                            crown.textContent = '👑';
+                            cell.appendChild(crown);
+                        }
+
+                        const deltaInfo = document.createElement('div');
+                        deltaInfo.className = 'ocean-delta';
+                        
+                        const townsClass = townsDelta > 0 ? 'delta-positive' : townsDelta < 0 ? 'delta-negative' : 'delta-neutral';
+                        const pointsClass = pointsDelta > 0 ? 'delta-positive' : pointsDelta < 0 ? 'delta-negative' : 'delta-neutral';
+                        
+                        deltaInfo.innerHTML = `
+                            <span class="${townsClass}">Villes: ${townsDelta >= 0 ? '+' : ''}${townsDelta}</span><br>
+                            <span class="${pointsClass}">Pts: ${pointsDelta >= 0 ? '+' : ''}${pointsDelta.toLocaleString()}</span>
+                        `;
+
+                        if (rankDelta !== 0 && rank1 !== 0 && rank2 !== 0) {
+                            const rankChange = document.createElement('div');
+                            rankChange.className = `rank-change ${rankDelta > 0 ? 'rank-up' : 'rank-down'}`;
+                            rankChange.textContent = rankDelta > 0 ? `↑${rankDelta}` : `↓${Math.abs(rankDelta)}`;
+                            cell.appendChild(oceanNum);
+                            cell.appendChild(deltaInfo);
+                            cell.appendChild(rankChange);
+                        } else {
+                            cell.appendChild(oceanNum);
+                            cell.appendChild(deltaInfo);
+                        }
+
+                        oceanGrid.appendChild(cell);
+                    }
+                }
+            } catch (error) {
+                console.error('Erreur lors de la comparaison:', error);
+                oceanGrid.innerHTML = '<div class="info-message">❌ Erreur lors du chargement des données.</div>';
+            } finally {
+                compareBtn.disabled = false;
             }
         }
     </script>
