@@ -643,58 +643,63 @@
 
             oceanGrid.innerHTML = '';
 
-            for (let ocean = 0; ocean < 100; ocean++) {
-                const cell = document.createElement('div');
-                cell.className = 'ocean-cell';
+            // Générer la grille : ligne par ligne (y=0 à 9), colonne par colonne (x=0 à 9)
+            for (let y = 0; y < 10; y++) {
+                for (let x = 0; x < 10; x++) {
+                    const ocean = x * 10 + y; // x=0,y=0 -> 00 | x=1,y=0 -> 10 | x=0,y=1 -> 01
+                    
+                    const cell = document.createElement('div');
+                    cell.className = 'ocean-cell';
 
-                const oceanNum = document.createElement('div');
-                oceanNum.className = 'ocean-number';
-                oceanNum.textContent = ocean.toString().padStart(2, '0');
+                    const oceanNum = document.createElement('div');
+                    oceanNum.className = 'ocean-number';
+                    oceanNum.textContent = ocean.toString().padStart(2, '0');
 
-                const data1 = stats1[ocean] || { towns: 0, points: 0 };
-                const data2 = stats2[ocean] || { towns: 0, points: 0 };
-                
-                const townsDelta = data2.towns - data1.towns;
-                const pointsDelta = data2.points - data1.points;
+                    const data1 = stats1[ocean] || { towns: 0, points: 0 };
+                    const data2 = stats2[ocean] || { towns: 0, points: 0 };
+                    
+                    const townsDelta = data2.towns - data1.towns;
+                    const pointsDelta = data2.points - data1.points;
 
-                const rank1 = rankings1[ocean]?.[allianceId] || 0;
-                const rank2 = rankings2[ocean]?.[allianceId] || 0;
-                const rankDelta = rank1 - rank2;
+                    const rank1 = rankings1[ocean]?.[allianceId] || 0;
+                    const rank2 = rankings2[ocean]?.[allianceId] || 0;
+                    const rankDelta = rank1 - rank2;
 
-                cell.style.backgroundColor = getColorForDelta(townsDelta, pointsDelta);
+                    cell.style.backgroundColor = getColorForDelta(townsDelta, pointsDelta);
 
-                // Ajouter la couronne si l'alliance est #1 dans la mer pour la semaine 2
-                if (rank2 === 1) {
-                    const crown = document.createElement('div');
-                    crown.className = 'crown-icon';
-                    crown.textContent = '👑';
-                    cell.appendChild(crown);
+                    // Ajouter la couronne si l'alliance est #1 dans la mer pour la semaine 2
+                    if (rank2 === 1) {
+                        const crown = document.createElement('div');
+                        crown.className = 'crown-icon';
+                        crown.textContent = '👑';
+                        cell.appendChild(crown);
+                    }
+
+                    const deltaInfo = document.createElement('div');
+                    deltaInfo.className = 'ocean-delta';
+                    
+                    const townsClass = townsDelta > 0 ? 'delta-positive' : townsDelta < 0 ? 'delta-negative' : 'delta-neutral';
+                    const pointsClass = pointsDelta > 0 ? 'delta-positive' : pointsDelta < 0 ? 'delta-negative' : 'delta-neutral';
+                    
+                    deltaInfo.innerHTML = `
+                        <span class="${townsClass}">Villes: ${townsDelta >= 0 ? '+' : ''}${townsDelta}</span><br>
+                        <span class="${pointsClass}">Pts: ${pointsDelta >= 0 ? '+' : ''}${pointsDelta.toLocaleString()}</span>
+                    `;
+
+                    if (rankDelta !== 0 && rank1 !== 0 && rank2 !== 0) {
+                        const rankChange = document.createElement('div');
+                        rankChange.className = `rank-change ${rankDelta > 0 ? 'rank-up' : 'rank-down'}`;
+                        rankChange.textContent = rankDelta > 0 ? `↑${rankDelta}` : `↓${Math.abs(rankDelta)}`;
+                        cell.appendChild(oceanNum);
+                        cell.appendChild(deltaInfo);
+                        cell.appendChild(rankChange);
+                    } else {
+                        cell.appendChild(oceanNum);
+                        cell.appendChild(deltaInfo);
+                    }
+
+                    oceanGrid.appendChild(cell);
                 }
-
-                const deltaInfo = document.createElement('div');
-                deltaInfo.className = 'ocean-delta';
-                
-                const townsClass = townsDelta > 0 ? 'delta-positive' : townsDelta < 0 ? 'delta-negative' : 'delta-neutral';
-                const pointsClass = pointsDelta > 0 ? 'delta-positive' : pointsDelta < 0 ? 'delta-negative' : 'delta-neutral';
-                
-                deltaInfo.innerHTML = `
-                    <span class="${townsClass}">Villes: ${townsDelta >= 0 ? '+' : ''}${townsDelta}</span><br>
-                    <span class="${pointsClass}">Pts: ${pointsDelta >= 0 ? '+' : ''}${pointsDelta.toLocaleString()}</span>
-                `;
-
-                if (rankDelta !== 0 && rank1 !== 0 && rank2 !== 0) {
-                    const rankChange = document.createElement('div');
-                    rankChange.className = `rank-change ${rankDelta > 0 ? 'rank-up' : 'rank-down'}`;
-                    rankChange.textContent = rankDelta > 0 ? `↑${rankDelta}` : `↓${Math.abs(rankDelta)}`;
-                    cell.appendChild(oceanNum);
-                    cell.appendChild(deltaInfo);
-                    cell.appendChild(rankChange);
-                } else {
-                    cell.appendChild(oceanNum);
-                    cell.appendChild(deltaInfo);
-                }
-
-                oceanGrid.appendChild(cell);
             }
         }
     </script>
