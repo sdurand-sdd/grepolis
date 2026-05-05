@@ -559,7 +559,7 @@
         function getOceanFromCoordinates(x, y) {
             const oceanX = Math.floor(x / 100);
             const oceanY = Math.floor(y / 100);
-            return oceanX * 10 + oceanY;
+            return oceanY * 10 + oceanX;
         }
 
         function calculateOceanStats(weekData, allianceId) {
