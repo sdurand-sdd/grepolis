@@ -321,6 +321,19 @@
                 <div class="legend-color" style="background: #5a9e5f;"></div>
                 <span>Forte progression</span>
             </div>
+            <div style="width: 100%; height: 1px; background: #ddd; margin: 10px 0;"></div>
+            <div class="legend-item">
+                <span style="font-size: 20px; font-weight: 700; color: #0d7c0d;">↑</span>
+                <span>Gain de places au classement</span>
+            </div>
+            <div class="legend-item">
+                <span style="font-size: 20px; font-weight: 700; color: #c41e1e;">↓</span>
+                <span>Perte de places au classement</span>
+            </div>
+            <div class="legend-item">
+                <span style="font-size: 20px;">👑</span>
+                <span>Alliance n°1 de la mer</span>
+            </div>
         </div>
 
         <div class="map-container">
@@ -357,6 +370,21 @@
         // Charger les données au démarrage
         loadAllData();
 
+        async function loadCurrentFiles() {
+            try {
+                const weekKey = 'current';
+                allData[weekKey] = {
+                    alliances: await fetchAndParse(`${GITHUB_RAW_BASE}/alliances.txt`, 'alliances'),
+                    players: await fetchAndParse(`${GITHUB_RAW_BASE}/players.txt`, 'players'),
+                    towns: await fetchAndParse(`${GITHUB_RAW_BASE}/towns.txt`, 'towns')
+                };
+                availableWeeks.add(weekKey);
+            } catch (error) {
+                console.error('Erreur lors du chargement des fichiers actuels:', error);
+                throw error;
+            }
+        }
+
         async function loadAllData() {
             loadingStatus.textContent = 'Chargement des données...';
             loadingStatus.className = 'file-count loading';
@@ -366,10 +394,13 @@
             availableWeeks.clear();
 
             try {
+                // Charger les fichiers actuels de la racine
+                await loadCurrentFiles();
+                
                 // Charger les fichiers du dossier archives
                 await loadArchiveFiles();
                 
-                loadingStatus.textContent = `✓ ${availableWeeks.size} semaines chargées`;
+                loadingStatus.textContent = `✓ Semaine actuelle + ${availableWeeks.size - 1} archives chargées`;
                 loadingStatus.className = 'file-count success';
                 
                 populateWeekSelects();
@@ -476,21 +507,24 @@
             week2Select.innerHTML = '<option value="">Choisir...</option>';
             
             weeks.forEach(week => {
+                const displayText = week === 'current' ? '📍 Semaine actuelle' : week.replace('_', ' ');
+                
                 const option1 = document.createElement('option');
                 option1.value = week;
-                option1.textContent = week.replace('_', ' ');
+                option1.textContent = displayText;
                 week1Select.appendChild(option1);
                 
                 const option2 = document.createElement('option');
                 option2.value = week;
-                option2.textContent = week.replace('_', ' ');
+                option2.textContent = displayText;
                 week2Select.appendChild(option2);
             });
 
-            // Présélectionner les 2 semaines les plus récentes
-            if (weeks.length >= 2) {
-                week1Select.value = weeks[1];
-                week2Select.value = weeks[0];
+            // Présélectionner : semaine la plus récente des archives vs semaine actuelle
+            const archiveWeeks = weeks.filter(w => w !== 'current');
+            if (archiveWeeks.length >= 1) {
+                week1Select.value = archiveWeeks[0]; // Semaine archive la plus récente
+                week2Select.value = 'current'; // Semaine actuelle
             }
         }
 
