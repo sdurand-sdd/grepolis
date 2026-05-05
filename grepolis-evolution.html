@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grepolis - Évolution Hebdomadaire</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            color: #1e3c72;
+            margin-bottom: 20px;
+            font-size: 28px;
+            text-align: center;
+        }
+
+        .controls {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        label {
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+
+        select, input[type="file"] {
+            padding: 10px 15px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+            transition: border-color 0.3s;
+        }
+
+        select:hover, input[type="file"]:hover {
+            border-color: #2a5298;
+        }
+
+        select:focus {
+            outline: none;
+            border-color: #1e3c72;
+        }
+
+        button {
+            padding: 12px 30px;
+            background: #2a5298;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 22px;
+        }
+
+        button:hover {
+            background: #1e3c72;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .legend {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            flex-wrap: wrap;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .legend-color {
+            width: 40px;
+            height: 30px;
+            border-radius: 4px;
+            border: 2px solid #333;
+        }
+
+        .map-container {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            overflow-x: auto;
+        }
+
+        .ocean-grid {
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            gap: 8px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .ocean-cell {
+            aspect-ratio: 1;
+            border: 3px solid #333;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 10px;
+            transition: all 0.3s;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .ocean-cell:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+            z-index: 10;
+        }
+
+        .ocean-number {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1e3c72;
+            margin-bottom: 5px;
+        }
+
+        .ocean-delta {
+            font-size: 11px;
+            line-height: 1.3;
+            text-align: center;
+            color: #333;
+        }
+
+        .delta-positive {
+            color: #0d5c0d;
+            font-weight: 600;
+        }
+
+        .delta-negative {
+            color: #8b0000;
+            font-weight: 600;
+        }
+
+        .delta-neutral {
+            color: #555;
+        }
+
+        .rank-change {
+            font-size: 16px;
+            font-weight: 700;
+            margin-top: 3px;
+        }
+
+        .rank-up {
+            color: #0d7c0d;
+        }
+
+        .rank-down {
+            color: #c41e1e;
+        }
+
+        .info-message {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            font-size: 16px;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+        }
+
+        .file-input-wrapper input[type=file] {
+            position: absolute;
+            left: -9999px;
+        }
+
+        .file-input-label {
+            padding: 10px 15px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+            transition: border-color 0.3s;
+            display: inline-block;
+        }
+
+        .file-input-label:hover {
+            border-color: #2a5298;
+        }
+
+        .file-count {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        @media (max-width: 768px) {
+            .ocean-grid {
+                gap: 4px;
+            }
+            
+            .ocean-number {
+                font-size: 14px;
+            }
+            
+            .ocean-delta {
+                font-size: 9px;
+            }
+            
+            .rank-change {
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📊 Grepolis - Évolution Hebdomadaire des Alliances</h1>
+            <div class="controls">
+                <div class="control-group">
+                    <label for="alliance-select">Alliance :</label>
+                    <select id="alliance-select">
+                        <option value="">Chargez les fichiers...</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="week1-select">Semaine 1 :</label>
+                    <select id="week1-select">
+                        <option value="">Choisir...</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="week2-select">Semaine 2 :</label>
+                    <select id="week2-select">
+                        <option value="">Choisir...</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label>Charger fichiers archives :</label>
+                    <div class="file-input-wrapper">
+                        <label for="file-input" class="file-input-label">Sélectionner fichiers</label>
+                        <input type="file" id="file-input" multiple accept=".txt">
+                    </div>
+                    <div id="file-count" class="file-count">Aucun fichier</div>
+                </div>
+                
+                <button id="compare-btn" disabled>Comparer</button>
+            </div>
+        </header>
+
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background: #4a90e2;"></div>
+                <span>Forte régression</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #7fb3e8;"></div>
+                <span>Régression</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #d0d0d0;"></div>
+                <span>Stable</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #90c695;"></div>
+                <span>Progression</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #5a9e5f;"></div>
+                <span>Forte progression</span>
+            </div>
+        </div>
+
+        <div class="map-container">
+            <div id="ocean-grid" class="ocean-grid">
+                <div class="info-message">
+                    Veuillez charger vos fichiers archives et sélectionner une alliance et deux semaines à comparer.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let allData = {};
+        let availableWeeks = new Set();
+
+        const fileInput = document.getElementById('file-input');
+        const fileCount = document.getElementById('file-count');
+        const allianceSelect = document.getElementById('alliance-select');
+        const week1Select = document.getElementById('week1-select');
+        const week2Select = document.getElementById('week2-select');
+        const compareBtn = document.getElementById('compare-btn');
+        const oceanGrid = document.getElementById('ocean-grid');
+
+        fileInput.addEventListener('change', handleFileUpload);
+        compareBtn.addEventListener('click', compareWeeks);
+        allianceSelect.addEventListener('change', updateCompareButton);
+        week1Select.addEventListener('change', updateCompareButton);
+        week2Select.addEventListener('change', updateCompareButton);
+
+        async function handleFileUpload(event) {
+            const files = Array.from(event.target.files);
+            fileCount.textContent = `${files.length} fichier(s) sélectionné(s)`;
+            
+            allData = {};
+            availableWeeks.clear();
+
+            for (const file of files) {
+                const content = await file.text();
+                const match = file.name.match(/(\w+)_(\d{4})_W(\d{2})\.txt/);
+                
+                if (match) {
+                    const [, type, year, week] = match;
+                    const weekKey = `${year}_W${week}`;
+                    
+                    if (!allData[weekKey]) {
+                        allData[weekKey] = {};
+                    }
+                    
+                    allData[weekKey][type] = parseFile(content, type);
+                    availableWeeks.add(weekKey);
+                }
+            }
+
+            populateWeekSelects();
+            populateAllianceSelect();
+        }
+
+        function parseFile(content, type) {
+            const lines = content.trim().split('\n');
+            const data = {};
+
+            lines.forEach(line => {
+                const parts = line.split(',');
+                if (type === 'alliances' && parts.length >= 4) {
+                    data[parts[0]] = { id: parts[0], name: parts[1], points: parseInt(parts[2]), rank: parseInt(parts[3]) };
+                } else if (type === 'players' && parts.length >= 5) {
+                    data[parts[0]] = { id: parts[0], name: parts[1], allianceId: parts[2], points: parseInt(parts[3]), rank: parseInt(parts[4]) };
+                } else if (type === 'towns' && parts.length >= 6) {
+                    if (!data[parts[4]]) data[parts[4]] = [];
+                    data[parts[4]].push({ id: parts[0], playerId: parts[1], name: parts[2], x: parseInt(parts[3]), y: parseInt(parts[4]), points: parseInt(parts[5]) });
+                }
+            });
+
+            return data;
+        }
+
+        function populateWeekSelects() {
+            const weeks = Array.from(availableWeeks).sort().reverse();
+            
+            week1Select.innerHTML = '<option value="">Choisir...</option>';
+            week2Select.innerHTML = '<option value="">Choisir...</option>';
+            
+            weeks.forEach(week => {
+                const option1 = document.createElement('option');
+                option1.value = week;
+                option1.textContent = week.replace('_', ' ');
+                week1Select.appendChild(option1);
+                
+                const option2 = document.createElement('option');
+                option2.value = week;
+                option2.textContent = week.replace('_', ' ');
+                week2Select.appendChild(option2);
+            });
+        }
+
+        function populateAllianceSelect() {
+            const alliances = new Set();
+            
+            Object.values(allData).forEach(weekData => {
+                if (weekData.alliances) {
+                    Object.values(weekData.alliances).forEach(alliance => {
+                        alliances.add(JSON.stringify({ id: alliance.id, name: alliance.name }));
+                    });
+                }
+            });
+            
+            allianceSelect.innerHTML = '<option value="">Choisir une alliance...</option>';
+            
+            Array.from(alliances)
+                .map(a => JSON.parse(a))
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .forEach(alliance => {
+                    const option = document.createElement('option');
+                    option.value = alliance.id;
+                    option.textContent = alliance.name;
+                    allianceSelect.appendChild(option);
+                });
+        }
+
+        function updateCompareButton() {
+            compareBtn.disabled = !allianceSelect.value || !week1Select.value || !week2Select.value;
+        }
+
+        function getOceanFromCoordinates(x, y) {
+            const oceanX = Math.floor(x / 100);
+            const oceanY = Math.floor(y / 100);
+            return oceanY * 10 + oceanX;
+        }
+
+        function calculateOceanStats(weekData, allianceId) {
+            const oceanStats = {};
+            
+            if (!weekData.players || !weekData.towns) return oceanStats;
+
+            const alliancePlayers = Object.values(weekData.players)
+                .filter(p => p.allianceId === allianceId)
+                .map(p => p.id);
+
+            Object.values(weekData.towns).forEach(oceanTowns => {
+                oceanTowns.forEach(town => {
+                    if (alliancePlayers.includes(town.playerId)) {
+                        const ocean = getOceanFromCoordinates(parseInt(town.x), parseInt(town.y));
+                        if (!oceanStats[ocean]) {
+                            oceanStats[ocean] = { towns: 0, points: 0 };
+                        }
+                        oceanStats[ocean].towns++;
+                        oceanStats[ocean].points += town.points;
+                    }
+                });
+            });
+
+            return oceanStats;
+        }
+
+        function calculateOceanRankings(weekData) {
+            const allianceOceanData = {};
+            
+            if (!weekData.players || !weekData.towns || !weekData.alliances) return {};
+
+            Object.values(weekData.alliances).forEach(alliance => {
+                const oceanStats = calculateOceanStats(weekData, alliance.id);
+                Object.entries(oceanStats).forEach(([ocean, stats]) => {
+                    if (!allianceOceanData[ocean]) allianceOceanData[ocean] = [];
+                    allianceOceanData[ocean].push({
+                        allianceId: alliance.id,
+                        points: stats.points,
+                        towns: stats.towns
+                    });
+                });
+            });
+
+            const rankings = {};
+            Object.entries(allianceOceanData).forEach(([ocean, alliances]) => {
+                alliances.sort((a, b) => b.points - a.points);
+                rankings[ocean] = {};
+                alliances.forEach((alliance, index) => {
+                    rankings[ocean][alliance.allianceId] = index + 1;
+                });
+            });
+
+            return rankings;
+        }
+
+        function getColorForDelta(townsDelta, pointsDelta) {
+            const totalDelta = townsDelta * 1000 + pointsDelta / 1000;
+            
+            if (totalDelta >= 3000) return '#5a9e5f';
+            if (totalDelta >= 1000) return '#90c695';
+            if (totalDelta > -1000) return '#d0d0d0';
+            if (totalDelta > -3000) return '#7fb3e8';
+            return '#4a90e2';
+        }
+
+        function compareWeeks() {
+            const allianceId = allianceSelect.value;
+            const week1 = week1Select.value;
+            const week2 = week2Select.value;
+
+            if (!allData[week1] || !allData[week2]) {
+                oceanGrid.innerHTML = '<div class="info-message">Données manquantes pour les semaines sélectionnées.</div>';
+                return;
+            }
+
+            const stats1 = calculateOceanStats(allData[week1], allianceId);
+            const stats2 = calculateOceanStats(allData[week2], allianceId);
+            const rankings1 = calculateOceanRankings(allData[week1]);
+            const rankings2 = calculateOceanRankings(allData[week2]);
+
+            oceanGrid.innerHTML = '';
+
+            for (let ocean = 0; ocean < 100; ocean++) {
+                const cell = document.createElement('div');
+                cell.className = 'ocean-cell';
+
+                const oceanNum = document.createElement('div');
+                oceanNum.className = 'ocean-number';
+                oceanNum.textContent = ocean.toString().padStart(2, '0');
+
+                const data1 = stats1[ocean] || { towns: 0, points: 0 };
+                const data2 = stats2[ocean] || { towns: 0, points: 0 };
+                
+                const townsDelta = data2.towns - data1.towns;
+                const pointsDelta = data2.points - data1.points;
+
+                const rank1 = rankings1[ocean]?.[allianceId] || 0;
+                const rank2 = rankings2[ocean]?.[allianceId] || 0;
+                const rankDelta = rank1 - rank2;
+
+                cell.style.backgroundColor = getColorForDelta(townsDelta, pointsDelta);
+
+                const deltaInfo = document.createElement('div');
+                deltaInfo.className = 'ocean-delta';
+                
+                const townsClass = townsDelta > 0 ? 'delta-positive' : townsDelta < 0 ? 'delta-negative' : 'delta-neutral';
+                const pointsClass = pointsDelta > 0 ? 'delta-positive' : pointsDelta < 0 ? 'delta-negative' : 'delta-neutral';
+                
+                deltaInfo.innerHTML = `
+                    <span class="${townsClass}">Villes: ${townsDelta >= 0 ? '+' : ''}${townsDelta}</span><br>
+                    <span class="${pointsClass}">Pts: ${pointsDelta >= 0 ? '+' : ''}${pointsDelta.toLocaleString()}</span>
+                `;
+
+                if (rankDelta !== 0 && rank1 !== 0 && rank2 !== 0) {
+                    const rankChange = document.createElement('div');
+                    rankChange.className = `rank-change ${rankDelta > 0 ? 'rank-up' : 'rank-down'}`;
+                    rankChange.textContent = rankDelta > 0 ? `↑${rankDelta}` : `↓${Math.abs(rankDelta)}`;
+                    cell.appendChild(oceanNum);
+                    cell.appendChild(deltaInfo);
+                    cell.appendChild(rankChange);
+                } else {
+                    cell.appendChild(oceanNum);
+                    cell.appendChild(deltaInfo);
+                }
+
+                oceanGrid.appendChild(cell);
+            }
+        }
+    </script>
+</body>
+</html>
