@@ -492,6 +492,7 @@
             lines.forEach(line => {
                 const parts = line.split(',');
                 if (type === 'alliances' && parts.length >= 4) {
+                    // Format: id,name,points,rank,members,towns
                     data[parts[0]] = { 
                         id: parts[0], 
                         name: decodeURIComponent(parts[1].replace(/\+/g, ' ')), 
@@ -499,6 +500,7 @@
                         rank: parseInt(parts[3]) 
                     };
                 } else if (type === 'players' && parts.length >= 5) {
+                    // Format: id,name,alliance_id,points,rank,towns
                     data[parts[0]] = { 
                         id: parts[0], 
                         name: decodeURIComponent(parts[1].replace(/\+/g, ' ')), 
@@ -506,15 +508,18 @@
                         points: parseInt(parts[3]), 
                         rank: parseInt(parts[4]) 
                     };
-                } else if (type === 'towns' && parts.length >= 6) {
-                    if (!data[parts[4]]) data[parts[4]] = [];
-                    data[parts[4]].push({ 
+                } else if (type === 'towns' && parts.length >= 7) {
+                    // Format: id,player_id,name,x,y,island_id,points
+                    const playerId = parts[1];
+                    if (!data[playerId]) data[playerId] = [];
+                    
+                    data[playerId].push({ 
                         id: parts[0], 
-                        playerId: parts[1], 
+                        playerId: playerId, 
                         name: decodeURIComponent(parts[2].replace(/\+/g, ' ')), 
                         x: parseInt(parts[3]), 
                         y: parseInt(parts[4]), 
-                        points: parseInt(parts[5]) 
+                        points: parseInt(parts[6]) 
                     });
                 }
             });
@@ -593,16 +598,16 @@
                 .filter(p => p.allianceId === allianceId)
                 .map(p => p.id);
 
-            Object.values(weekData.towns).forEach(oceanTowns => {
-                oceanTowns.forEach(town => {
-                    if (alliancePlayers.includes(town.playerId)) {
-                        const ocean = getOceanFromCoordinates(parseInt(town.x), parseInt(town.y));
-                        if (!oceanStats[ocean]) {
-                            oceanStats[ocean] = { towns: 0, points: 0 };
-                        }
-                        oceanStats[ocean].towns++;
-                        oceanStats[ocean].points += town.points;
+            // weekData.towns est indexé par playerId
+            alliancePlayers.forEach(playerId => {
+                const playerTowns = weekData.towns[playerId] || [];
+                playerTowns.forEach(town => {
+                    const ocean = Math.floor(town.x / 100) * 10 + Math.floor(town.y / 100);
+                    if (!oceanStats[ocean]) {
+                        oceanStats[ocean] = { towns: 0, points: 0 };
                     }
+                    oceanStats[ocean].towns++;
+                    oceanStats[ocean].points += town.points;
                 });
             });
 
