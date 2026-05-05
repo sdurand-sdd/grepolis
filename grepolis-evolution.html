@@ -205,6 +205,14 @@
             color: #c41e1e;
         }
 
+        .crown-icon {
+            font-size: 20px;
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+        }
+
         .info-message {
             text-align: center;
             padding: 40px;
@@ -431,12 +439,30 @@
             lines.forEach(line => {
                 const parts = line.split(',');
                 if (type === 'alliances' && parts.length >= 4) {
-                    data[parts[0]] = { id: parts[0], name: parts[1], points: parseInt(parts[2]), rank: parseInt(parts[3]) };
+                    data[parts[0]] = { 
+                        id: parts[0], 
+                        name: decodeURIComponent(parts[1].replace(/\+/g, ' ')), 
+                        points: parseInt(parts[2]), 
+                        rank: parseInt(parts[3]) 
+                    };
                 } else if (type === 'players' && parts.length >= 5) {
-                    data[parts[0]] = { id: parts[0], name: parts[1], allianceId: parts[2], points: parseInt(parts[3]), rank: parseInt(parts[4]) };
+                    data[parts[0]] = { 
+                        id: parts[0], 
+                        name: decodeURIComponent(parts[1].replace(/\+/g, ' ')), 
+                        allianceId: parts[2], 
+                        points: parseInt(parts[3]), 
+                        rank: parseInt(parts[4]) 
+                    };
                 } else if (type === 'towns' && parts.length >= 6) {
                     if (!data[parts[4]]) data[parts[4]] = [];
-                    data[parts[4]].push({ id: parts[0], playerId: parts[1], name: parts[2], x: parseInt(parts[3]), y: parseInt(parts[4]), points: parseInt(parts[5]) });
+                    data[parts[4]].push({ 
+                        id: parts[0], 
+                        playerId: parts[1], 
+                        name: decodeURIComponent(parts[2].replace(/\+/g, ' ')), 
+                        x: parseInt(parts[3]), 
+                        y: parseInt(parts[4]), 
+                        points: parseInt(parts[5]) 
+                    });
                 }
             });
 
@@ -499,7 +525,7 @@
         function getOceanFromCoordinates(x, y) {
             const oceanX = Math.floor(x / 100);
             const oceanY = Math.floor(y / 100);
-            return oceanY * 10 + oceanX;
+            return oceanX * 10 + oceanY;
         }
 
         function calculateOceanStats(weekData, allianceId) {
@@ -602,6 +628,14 @@
                 const rankDelta = rank1 - rank2;
 
                 cell.style.backgroundColor = getColorForDelta(townsDelta, pointsDelta);
+
+                // Ajouter la couronne si l'alliance est #1 dans la mer pour la semaine 2
+                if (rank2 === 1) {
+                    const crown = document.createElement('div');
+                    crown.className = 'crown-icon';
+                    crown.textContent = '👑';
+                    cell.appendChild(crown);
+                }
 
                 const deltaInfo = document.createElement('div');
                 deltaInfo.className = 'ocean-delta';
