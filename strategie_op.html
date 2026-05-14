@@ -180,6 +180,7 @@
             
             const [targetCity, setTargetCity] = useState(null);
             const [hoveredCity, setHoveredCity] = useState(null);
+            const [selectedCluster, setSelectedCluster] = useState(null);
             const [distanceMode, setDistanceMode] = useState(false);
             const [citiesForDistance, setCitiesForDistance] = useState([]);
             
@@ -307,6 +308,36 @@
                 }
             }, [data, searchTerm2, selectionMode]);
 
+            // Fonction pour détecter un cluster de villes proches
+            const findCluster = useCallback((clickedCity, radius = 5) => {
+                if (!data) return null;
+                
+                const nearbyCities = filteredCities.filter(city => {
+                    const distance = Math.sqrt(
+                        Math.pow(city.x - clickedCity.x, 2) + 
+                        Math.pow(city.y - clickedCity.y, 2)
+                    );
+                    return distance <= radius;
+                });
+                
+                if (nearbyCities.length <= 1) {
+                    return null; // Pas de cluster, juste une ville isolée
+                }
+                
+                // Trier par distance
+                nearbyCities.sort((a, b) => {
+                    const distA = Math.sqrt(Math.pow(a.x - clickedCity.x, 2) + Math.pow(a.y - clickedCity.y, 2));
+                    const distB = Math.sqrt(Math.pow(b.x - clickedCity.x, 2) + Math.pow(b.y - clickedCity.y, 2));
+                    return distA - distB;
+                });
+                
+                return {
+                    center: clickedCity,
+                    cities: nearbyCities,
+                    radius: radius
+                };
+            }, [data, filteredCities]);
+
             // Gestion des clics sur la carte
             const handleCityClick = useCallback((city) => {
                 if (distanceMode) {
@@ -318,9 +349,17 @@
                         setCitiesForDistance([city]);
                     }
                 } else {
-                    setTargetCity(city);
+                    // Détecter si c'est un cluster
+                    const cluster = findCluster(city);
+                    if (cluster) {
+                        setSelectedCluster(cluster);
+                        setTargetCity(null);
+                    } else {
+                        setTargetCity(city);
+                        setSelectedCluster(null);
+                    }
                 }
-            }, [distanceMode, citiesForDistance]);
+            }, [distanceMode, citiesForDistance, findCluster]);
 
             const resetDistanceMode = () => {
                 setDistanceMode(false);
@@ -836,6 +875,87 @@
                                     Quitter le mode Distance
                                 </button>
                             </div>
+                        ) : selectedCluster ? (
+                            <div className="space-y-3">
+                                <div className="bg-slate-700 p-3 rounded-lg">
+                                    <div className="font-semibold text-white border-b border-slate-600 pb-2 mb-3 flex justify-between items-center">
+                                        <span>📍 Cluster de {selectedCluster.cities.length} villes</span>
+                                        <button
+                                            onClick={() => setSelectedCluster(null)}
+                                            className="text-red-400 hover:text-red-300 text-sm"
+                                        >
+                                            ✕
+                                        </button>
+                                    </div>
+                                    <div className="text-xs text-slate-400 mb-3">
+                                        Zone autour de ({selectedCluster.center.x}, {selectedCluster.center.y})
+                                    </div>
+                                    
+                                    {/* Liste des villes du cluster */}
+                                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                                        {selectedCluster.cities.map((city, index) => {
+                                            const cityColor = getCityColor(city);
+                                            return (
+                                                <div 
+                                                    key={city.id}
+                                                    className="bg-slate-800 p-2 rounded border-l-4 cursor-pointer hover:bg-slate-750 transition-colors"
+                                                    style={{ borderLeftColor: cityColor }}
+                                                    onClick={() => {
+                                                        setTargetCity(city);
+                                                        setSelectedCluster(null);
+                                                    }}
+                                                >
+                                                    <div className="flex justify-between items-start mb-1">
+                                                        <div className="font-semibold text-sm text-white truncate flex-1">
+                                                            {city.name}
+                                                        </div>
+                                                        <div className="text-xs text-green-400 ml-2">
+                                                            {city.points.toLocaleString('fr-FR')} pts
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-xs text-slate-400">
+                                                        <div>👤 {city.player_name}</div>
+                                                        {city.alliance_name && (
+                                                            <div>🛡️ {city.alliance_name}</div>
+                                                        )}
+                                                        <div>📍 ({city.x}, {city.y})</div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    
+                                    {/* Statistiques du cluster */}
+                                    <div className="mt-3 pt-3 border-t border-slate-600 text-xs">
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <div className="text-slate-400">Joueurs uniques:</div>
+                                                <div className="font-semibold">
+                                                    {new Set(selectedCluster.cities.map(c => c.player_id)).size}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div className="text-slate-400">Alliances:</div>
+                                                <div className="font-semibold">
+                                                    {new Set(selectedCluster.cities.map(c => c.alliance_id)).size}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div className="text-slate-400">Points totaux:</div>
+                                                <div className="font-semibold text-green-400">
+                                                    {selectedCluster.cities.reduce((sum, c) => sum + c.points, 0).toLocaleString('fr-FR')}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div className="text-slate-400">Moyenne:</div>
+                                                <div className="font-semibold">
+                                                    {Math.round(selectedCluster.cities.reduce((sum, c) => sum + c.points, 0) / selectedCluster.cities.length).toLocaleString('fr-FR')}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         ) : displayCity ? (
                             <div className="space-y-4">
                                 <div className="bg-slate-700 p-3 rounded-lg space-y-1">
@@ -926,7 +1046,8 @@
                                         <div>🖱️ <strong>Molette</strong> : Zoom avant/arrière</div>
                                         <div>👆 <strong>Glisser</strong> : Déplacer la carte</div>
                                         <div>👆 <strong>Pincer/Écarter</strong> : Zoomer (tactile)</div>
-                                        <div>👆 <strong>Clic</strong> : Sélectionner une ville</div>
+                                        <div>👆 <strong>Clic sur ville</strong> : Détails</div>
+                                        <div>👆 <strong>Clic sur cluster</strong> : Liste des villes</div>
                                     </div>
                                 </div>
                             </div>
