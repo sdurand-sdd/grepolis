@@ -618,53 +618,62 @@
                         🎯 Carte Stratégique - Opérations Grepolis
                     </h1>
                     
-                    {/* Mode de sélection */}
-                    <div className="flex justify-center gap-2 mb-4">
-                        <button
-                            onClick={() => {
-                                setSelectionMode('player-player');
-                                setSelectedEntity2(null);
-                                setSearchTerm2('');
-                            }}
-                            className={`px-4 py-2 rounded-lg transition-colors ${
-                                selectionMode === 'player-player'
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-slate-600 text-slate-300 hover:bg-slate-500'
-                            }`}
-                        >
-                            Joueur vs Joueur
-                        </button>
-                        <button
-                            onClick={() => {
-                                setSelectionMode('player-alliance');
-                                setSelectedEntity2(null);
-                                setSearchTerm2('');
-                            }}
-                            className={`px-4 py-2 rounded-lg transition-colors ${
-                                selectionMode === 'player-alliance'
-                                    ? 'bg-purple-600 text-white'
-                                    : 'bg-slate-600 text-slate-300 hover:bg-slate-500'
-                            }`}
-                        >
-                            Joueur vs Alliance
-                        </button>
-                    </div>
+                    {/* Interface compacte sur une seule ligne */}
+                    <div className="flex flex-wrap gap-2 items-end">
+                        {/* Mode de sélection */}
+                        <div className="flex gap-1">
+                            <button
+                                onClick={() => {
+                                    setSelectionMode('player-player');
+                                    setSelectedEntity2(null);
+                                    setSearchTerm2('');
+                                }}
+                                className={`px-3 py-2 rounded-lg transition-colors text-xs ${
+                                    selectionMode === 'player-player'
+                                        ? 'bg-blue-600 text-white'
+                                        : 'bg-slate-600 text-slate-300 hover:bg-slate-500'
+                                }`}
+                                title="Joueur vs Joueur"
+                            >
+                                J vs J
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setSelectionMode('player-alliance');
+                                    setSelectedEntity2(null);
+                                    setSearchTerm2('');
+                                }}
+                                className={`px-3 py-2 rounded-lg transition-colors text-xs ${
+                                    selectionMode === 'player-alliance'
+                                        ? 'bg-purple-600 text-white'
+                                        : 'bg-slate-600 text-slate-300 hover:bg-slate-500'
+                                }`}
+                                title="Joueur vs Alliance"
+                            >
+                                J vs A
+                            </button>
+                        </div>
 
-                    {/* Sélecteurs d'entités */}
-                    <div className="grid md:grid-cols-2 gap-4">
-                        {/* Entité 1 (toujours un joueur) */}
-                        <div className="relative">
-                            <label className="block text-sm font-semibold mb-1" style={{ color: entity1Color }}>
-                                🎮 Joueur 1
-                            </label>
+                        {/* Entité 1 */}
+                        <div className="relative flex-1 min-w-[200px]">
                             <input
                                 type="text"
-                                value={searchTerm1}
-                                onChange={(e) => setSearchTerm1(e.target.value)}
-                                placeholder="Rechercher un joueur..."
-                                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-green-500"
+                                value={selectedEntity1 ? selectedEntity1.name : searchTerm1}
+                                onChange={(e) => {
+                                    if (!selectedEntity1) {
+                                        setSearchTerm1(e.target.value);
+                                    }
+                                }}
+                                onFocus={() => {
+                                    if (selectedEntity1) {
+                                        setSelectedEntity1(null);
+                                    }
+                                }}
+                                placeholder="🎮 Joueur 1..."
+                                className="w-full px-3 py-2 bg-slate-700 border-2 text-white rounded-lg focus:outline-none text-sm"
+                                style={{ borderColor: selectedEntity1 ? entity1Color : '#475569' }}
                             />
-                            {searchTerm1 && filteredPlayers1.length > 0 && (
+                            {searchTerm1 && !selectedEntity1 && filteredPlayers1.length > 0 && (
                                 <div className="absolute z-10 w-full mt-1 bg-slate-700 border border-slate-600 rounded-lg max-h-48 overflow-y-auto">
                                     {filteredPlayers1.map(player => (
                                         <div
@@ -677,38 +686,34 @@
                                         >
                                             <div className="font-semibold">{player.name}</div>
                                             <div className="text-xs text-slate-400">
-                                                {player.alliance_name} • {player.towns} villes • {player.points.toLocaleString('fr-FR')} pts
+                                                {player.alliance_name} • {player.towns} villes
                                             </div>
                                         </div>
                                     ))}
                                 </div>
                             )}
-                            {selectedEntity1 && (
-                                <div className="mt-2 p-2 bg-slate-700 rounded-lg flex justify-between items-center">
-                                    <span className="text-sm font-semibold">{selectedEntity1.name}</span>
-                                    <button
-                                        onClick={() => setSelectedEntity1(null)}
-                                        className="text-red-400 hover:text-red-300"
-                                    >
-                                        ✕
-                                    </button>
-                                </div>
-                            )}
                         </div>
 
-                        {/* Entité 2 (joueur ou alliance selon le mode) */}
-                        <div className="relative">
-                            <label className="block text-sm font-semibold mb-1" style={{ color: entity2Color }}>
-                                {selectionMode === 'player-player' ? '🎮 Joueur 2' : '🛡️ Alliance'}
-                            </label>
+                        {/* Entité 2 */}
+                        <div className="relative flex-1 min-w-[200px]">
                             <input
                                 type="text"
-                                value={searchTerm2}
-                                onChange={(e) => setSearchTerm2(e.target.value)}
-                                placeholder={selectionMode === 'player-player' ? 'Rechercher un joueur...' : 'Rechercher une alliance...'}
-                                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-purple-500"
+                                value={selectedEntity2 ? selectedEntity2.name : searchTerm2}
+                                onChange={(e) => {
+                                    if (!selectedEntity2) {
+                                        setSearchTerm2(e.target.value);
+                                    }
+                                }}
+                                onFocus={() => {
+                                    if (selectedEntity2) {
+                                        setSelectedEntity2(null);
+                                    }
+                                }}
+                                placeholder={selectionMode === 'player-player' ? '🎮 Joueur 2...' : '🛡️ Alliance...'}
+                                className="w-full px-3 py-2 bg-slate-700 border-2 text-white rounded-lg focus:outline-none text-sm"
+                                style={{ borderColor: selectedEntity2 ? entity2Color : '#475569' }}
                             />
-                            {searchTerm2 && filteredSearchResults2.length > 0 && (
+                            {searchTerm2 && !selectedEntity2 && filteredSearchResults2.length > 0 && (
                                 <div className="absolute z-10 w-full mt-1 bg-slate-700 border border-slate-600 rounded-lg max-h-48 overflow-y-auto">
                                     {filteredSearchResults2.map(entity => (
                                         <div
@@ -722,40 +727,24 @@
                                             <div className="font-semibold">{entity.name}</div>
                                             <div className="text-xs text-slate-400">
                                                 {selectionMode === 'player-player' 
-                                                    ? `${entity.alliance_name} • ${entity.towns} villes • ${entity.points.toLocaleString('fr-FR')} pts`
-                                                    : `${entity.members} membres • ${entity.towns} villes • ${entity.points.toLocaleString('fr-FR')} pts`
+                                                    ? `${entity.alliance_name} • ${entity.towns} villes`
+                                                    : `${entity.members} membres • ${entity.towns} villes`
                                                 }
                                             </div>
                                         </div>
                                     ))}
                                 </div>
                             )}
-                            {selectedEntity2 && (
-                                <div className="mt-2 p-2 bg-slate-700 rounded-lg flex justify-between items-center">
-                                    <span className="text-sm font-semibold">{selectedEntity2.name}</span>
-                                    <button
-                                        onClick={() => setSelectedEntity2(null)}
-                                        className="text-red-400 hover:text-red-300"
-                                    >
-                                        ✕
-                                    </button>
-                                </div>
-                            )}
                         </div>
-                    </div>
 
-                    {/* Sélecteur d'Océan */}
-                    <div className="mt-4">
-                        <label className="block text-sm font-semibold mb-2 text-cyan-400">
-                            🌊 Filtre par Océan {selectedOcean && `(Océan ${selectedOcean})`}
-                        </label>
-                        <div className="flex gap-2">
+                        {/* Sélecteur d'Océan */}
+                        <div className="flex gap-1 min-w-[200px]">
                             <select
                                 value={selectedOcean}
                                 onChange={(e) => setSelectedOcean(e.target.value)}
-                                className="flex-1 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-cyan-500"
+                                className="flex-1 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none text-sm"
                             >
-                                <option value="">Tous les océans</option>
+                                <option value="">🌊 Tous océans</option>
                                 {Array.from({ length: 100 }, (_, i) => {
                                     const oceanX = Math.floor(i / 10);
                                     const oceanY = i % 10;
@@ -771,17 +760,17 @@
                                 <>
                                     <button
                                         onClick={() => zoomToOcean(selectedOcean)}
-                                        className="px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors text-sm whitespace-nowrap"
+                                        className="px-3 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors text-sm"
                                         title="Zoomer sur cet océan"
                                     >
-                                        🔍 Zoom
+                                        🔍
                                     </button>
                                     <button
                                         onClick={() => {
                                             setSelectedOcean('');
                                             setTransform({ x: 0, y: 0, scale: 1 });
                                         }}
-                                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+                                        className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
                                     >
                                         ✕
                                     </button>
@@ -792,32 +781,32 @@
 
 
 
-                    {/* Boutons de contrôle */}
-                    <div className="mt-4 flex flex-wrap gap-2 justify-center">
+                    {/* Boutons de contrôle compacts */}
+                    <div className="mt-3 flex flex-wrap gap-2 justify-center text-xs">
                         <button
                             onClick={() => setTransform({ x: 0, y: 0, scale: 1 })}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                            className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                         >
-                            Réinitialiser la vue
+                            ↺ Réinitialiser
                         </button>
                         <button
                             onClick={() => {
                                 setDistanceMode(!distanceMode);
                                 setCitiesForDistance([]);
                             }}
-                            className={`px-4 py-2 rounded-lg transition-colors text-sm ${
+                            className={`px-3 py-1.5 rounded-lg transition-colors ${
                                 distanceMode
                                     ? 'bg-green-600 text-white hover:bg-green-700'
                                     : 'bg-slate-600 text-white hover:bg-slate-500'
                             }`}
                         >
-                            {distanceMode ? 'Mode Distance: ON' : 'Mode Distance: OFF'}
+                            {distanceMode ? '📏 Mode Distance: ON' : '📏 Mode Distance: OFF'}
                         </button>
                     </div>
                     
                     {data && (
                         <div className="text-center text-xs text-slate-400 mt-2">
-                            Dernière mise à jour: {data.lastUpdate}
+                            MAJ: {data.lastUpdate}
                         </div>
                     )}
                 </div>
