@@ -176,6 +176,7 @@
             
             const [searchTerm1, setSearchTerm1] = useState('');
             const [searchTerm2, setSearchTerm2] = useState('');
+            const [selectedOcean, setSelectedOcean] = useState('');
             
             const [targetCity, setTargetCity] = useState(null);
             const [hoveredCity, setHoveredCity] = useState(null);
@@ -214,13 +215,15 @@
             const filteredCities = useMemo(() => {
                 if (!data) return [];
                 
-                // Si aucune entité sélectionnée, montrer toutes les villes en gris
-                if (!selectedEntity1 && !selectedEntity2) {
-                    return data.cities;
+                let cities = data.cities;
+                
+                // Filtrer par océan si sélectionné
+                if (selectedOcean) {
+                    cities = cities.filter(city => city.ocean === selectedOcean);
                 }
-
-                return data.cities;
-            }, [data, selectedEntity1, selectedEntity2]);
+                
+                return cities;
+            }, [data, selectedOcean]);
 
             // Fonction pour obtenir la couleur d'une ville
             const getCityColor = useCallback((city) => {
@@ -277,9 +280,10 @@
                         cities: entity2Cities.length,
                         totalPoints: entity2Cities.reduce((sum, c) => sum + c.points, 0),
                         avgPoints: entity2Cities.length > 0 ? Math.round(entity2Cities.reduce((sum, c) => sum + c.points, 0) / entity2Cities.length) : 0
-                    }
+                    },
+                    oceanFilter: selectedOcean ? `Océan ${selectedOcean}` : 'Tous les océans'
                 };
-            }, [data, filteredCities, selectedEntity1, selectedEntity2, selectionMode]);
+            }, [data, filteredCities, selectedEntity1, selectedEntity2, selectionMode, selectedOcean]);
 
             // Filtres de recherche
             const filteredPlayers1 = useMemo(() => {
@@ -322,6 +326,41 @@
                 setDistanceMode(false);
                 setCitiesForDistance([]);
             };
+
+            // Fonction pour zoomer sur un océan spécifique
+            const zoomToOcean = useCallback((oceanNumber) => {
+                if (!oceanNumber) {
+                    setTransform({ x: 0, y: 0, scale: 1 });
+                    return;
+                }
+                
+                const oceanX = parseInt(oceanNumber[0]);
+                const oceanY = parseInt(oceanNumber[1]);
+                
+                const oceanCenterX = oceanX * 100 + 50;
+                const oceanCenterY = oceanY * 100 + 50;
+                
+                const mapElement = mapRef.current;
+                if (!mapElement) return;
+                
+                const rect = mapElement.getBoundingClientRect();
+                const viewportCenterX = rect.width / 2;
+                const viewportCenterY = rect.height / 2;
+                
+                const newScale = 3;
+                
+                const newX = viewportCenterX - (oceanCenterX * newScale);
+                const newY = viewportCenterY - (oceanCenterY * newScale);
+                
+                setTransform({ x: newX, y: newY, scale: newScale });
+            }, []);
+
+            // Effet pour zoomer automatiquement quand un océan est sélectionné
+            useEffect(() => {
+                if (selectedOcean) {
+                    zoomToOcean(selectedOcean);
+                }
+            }, [selectedOcean, zoomToOcean]);
 
             // Zoom/Pan
             const handleWheel = useCallback((e) => {
@@ -653,23 +692,69 @@
                         </div>
                     </div>
 
+                    {/* Sélecteur d'Océan */}
+                    <div className="mt-4">
+                        <label className="block text-sm font-semibold mb-2 text-cyan-400">
+                            🌊 Filtre par Océan
+                        </label>
+                        <div className="flex gap-2">
+                            <select
+                                value={selectedOcean}
+                                onChange={(e) => setSelectedOcean(e.target.value)}
+                                className="flex-1 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-cyan-500"
+                            >
+                                <option value="">Tous les océans</option>
+                                {Array.from({ length: 100 }, (_, i) => {
+                                    const oceanX = Math.floor(i / 10);
+                                    const oceanY = i % 10;
+                                    const oceanNumber = `${oceanX}${oceanY}`;
+                                    return (
+                                        <option key={oceanNumber} value={oceanNumber}>
+                                            Océan {oceanNumber}
+                                        </option>
+                                    );
+                                })}
+                            </select>
+                            {selectedOcean && (
+                                <button
+                                    onClick={() => {
+                                        setSelectedOcean('');
+                                        setTransform({ x: 0, y: 0, scale: 1 });
+                                    }}
+                                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+                                >
+                                    Réinitialiser
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
                     {/* Statistiques comparatives */}
                     {statistics && (
-                        <div className="mt-4 grid md:grid-cols-2 gap-4 text-sm">
-                            <div className="bg-slate-700 p-3 rounded-lg" style={{ borderLeft: `4px solid ${entity1Color}` }}>
-                                <div className="font-bold mb-2">{statistics.entity1.name}</div>
-                                <div className="space-y-1 text-xs">
-                                    <div>🏛️ Villes: <span className="font-semibold">{statistics.entity1.cities}</span></div>
-                                    <div>⭐ Points totaux: <span className="font-semibold">{statistics.entity1.totalPoints.toLocaleString('fr-FR')}</span></div>
-                                    <div>📊 Moy/ville: <span className="font-semibold">{statistics.entity1.avgPoints.toLocaleString('fr-FR')}</span></div>
+                        <div className="mt-4">
+                            {selectedOcean && (
+                                <div className="mb-3 text-center p-2 bg-cyan-900 rounded-lg">
+                                    <span className="text-cyan-300 text-sm font-semibold">
+                                        📍 Vue filtrée: {statistics.oceanFilter}
+                                    </span>
                                 </div>
-                            </div>
-                            <div className="bg-slate-700 p-3 rounded-lg" style={{ borderLeft: `4px solid ${entity2Color}` }}>
-                                <div className="font-bold mb-2">{statistics.entity2.name}</div>
-                                <div className="space-y-1 text-xs">
-                                    <div>🏛️ Villes: <span className="font-semibold">{statistics.entity2.cities}</span></div>
-                                    <div>⭐ Points totaux: <span className="font-semibold">{statistics.entity2.totalPoints.toLocaleString('fr-FR')}</span></div>
-                                    <div>📊 Moy/ville: <span className="font-semibold">{statistics.entity2.avgPoints.toLocaleString('fr-FR')}</span></div>
+                            )}
+                            <div className="grid md:grid-cols-2 gap-4 text-sm">
+                                <div className="bg-slate-700 p-3 rounded-lg" style={{ borderLeft: `4px solid ${entity1Color}` }}>
+                                    <div className="font-bold mb-2">{statistics.entity1.name}</div>
+                                    <div className="space-y-1 text-xs">
+                                        <div>🏛️ Villes: <span className="font-semibold">{statistics.entity1.cities}</span></div>
+                                        <div>⭐ Points totaux: <span className="font-semibold">{statistics.entity1.totalPoints.toLocaleString('fr-FR')}</span></div>
+                                        <div>📊 Moy/ville: <span className="font-semibold">{statistics.entity1.avgPoints.toLocaleString('fr-FR')}</span></div>
+                                    </div>
+                                </div>
+                                <div className="bg-slate-700 p-3 rounded-lg" style={{ borderLeft: `4px solid ${entity2Color}` }}>
+                                    <div className="font-bold mb-2">{statistics.entity2.name}</div>
+                                    <div className="space-y-1 text-xs">
+                                        <div>🏛️ Villes: <span className="font-semibold">{statistics.entity2.cities}</span></div>
+                                        <div>⭐ Points totaux: <span className="font-semibold">{statistics.entity2.totalPoints.toLocaleString('fr-FR')}</span></div>
+                                        <div>📊 Moy/ville: <span className="font-semibold">{statistics.entity2.avgPoints.toLocaleString('fr-FR')}</span></div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
