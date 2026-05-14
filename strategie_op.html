@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carte Stratégique Grepolis - Opérations</title>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; }
+        .map-container { 
+            cursor: grab; 
+            touch-action: none; 
+        }
+        .map-container:active { cursor: grabbing; }
+        .distance-line { stroke-dasharray: 5,5; animation: dash 1s linear infinite; }
+        @keyframes dash { to { stroke-dashoffset: -10; } }
+
+        .map-wrapper { 
+            height: 100%; 
+            min-height: 35vh;
+        }
+
+        @media (max-width: 767px) { 
+            .sidebar {
+                max-height: 55vh;
+                width: 100%; 
+            }
+            .main-content {
+                 overflow-y: auto;
+                 display: flex;
+                 flex-direction: column;
+            }
+            .map-wrapper {
+                 width: 100%; 
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="root" class="main-content h-screen"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo, useCallback, useEffect, useRef } = React;
+
+        // --- Fonctions de base et de parsing (hors composant) ---
+
+        const calculateDistance = (x1, y1, x2, y2) => {
+            return Math.sqrt(Math.pow(x1 - x2, 2) + Math.pow(y1 - y2, 2)).toFixed(2);
+        };
+
+        const getGrepolisOcean = (x, y) => {
+            const oceanX = Math.floor(x / 100).toString(); 
+            const oceanY = Math.floor(y / 100).toString();
+            return oceanX.padStart(1, '0') + oceanY.padStart(1, '0'); 
+        };
+        
+        const decodeName = (str) => {
+            if (!str) return str;
+            try {
+                return decodeURIComponent(str.trim().replace(/\+/g, ' '));
+            } catch (e) {
+                return str.trim().replace(/\+/g, ' ');
+            }
+        };
+
+        const parseData = (text, headers) => {
+            const lines = text.trim().split('\n').filter(line => line.trim() !== '' && !line.startsWith('#'));
+            if (lines.length === 0) return [];
+            
+            return lines.map(line => {
+                const values = line.split(','); 
+                const obj = {};
+                headers.forEach((header, i) => {
+                    const value = values[i];
+                    const isNumeric = (header.endsWith('_id') || ['id', 'x', 'y', 'points', 'island_pos', 'towns', 'members', 'rank', 'off_rank', 'off_points', 'def_rank', 'def_points'].includes(header));
+                    obj[header] = isNumeric ? (Number(value) || 0) : decodeName(value);
+                });
+                if (Object.keys(obj).length !== headers.length) {
+                    return null;
+                }
+                return obj;
+            }).filter(obj => obj !== null);
+        };
+
+        const fetchData = async () => {
+            const BASE_URL = '';
+
+            try {
+                const [alliancesRes, playersRes, townsRes, updateRes] = await Promise.all([
+                    fetch(`${BASE_URL}alliances.txt`),
+                    fetch(`${BASE_URL}players.txt`),
+                    fetch(`${BASE_URL}towns.txt`),
+                    fetch(`${BASE_URL}last_update.txt`),
+                ]);
+
+                if (!alliancesRes.ok || !playersRes.ok || !townsRes.ok) {
+                    throw new Error("Erreur de chargement d'un des fichiers TXT (alliances, players, ou towns).");
+                }
+
+                const [alliancesText, playersText, townsText, updateText] = await Promise.all([
+                    alliancesRes.text(),
+                    playersRes.text(),
+                    townsRes.text(),
+                    updateRes.ok ? updateRes.text() : 'Date inconnue',
+                ]);
+
+                const alliancesHeaders = ['id', 'name', 'points', 'towns', 'members'];
+                const playersHeaders = ['id', 'name', 'alliance_id', 'points', 'rank', 'towns', 'off_rank', 'off_points', 'def_rank', 'def_points'];
+                const townsHeaders = ['id', 'player_id', 'name', 'x', 'y', 'island_pos', 'points']; 
+
+                const alliances = parseData(alliancesText, alliancesHeaders);
+                const players = parseData(playersText, playersHeaders);
+                const towns = parseData(townsText, townsHeaders);
+                
+                const lastUpdate = updateText.trim().split('\n')[0];
+
+                const allianceMap = new Map(alliances.map(a => [a.id, a]));
+                const playerMap = new Map(players.map(p => [p.id, {
+                    ...p,
+                    alliance_name: allianceMap.get(p.alliance_id)?.name || 'Sans alliance',
+                    alliance_members: allianceMap.get(p.alliance_id)?.members || 0
+                }]));
+
+                const mergedCities = towns.map(town => {
+                    const player = playerMap.get(town.player_id);
+                    if (!player || town.points === 0) return null; 
+
+                    return {
+                        ...town,
+                        ocean: getGrepolisOcean(town.x, town.y), 
+                        player_name: player.name,
+                        player_id: player.id,
+                        player_points: player.points,
+                        player_rank: player.rank,
+                        player_off_rank: player.off_rank,
+                        player_off_points: player.off_points,
+                        player_def_rank: player.def_rank,
+                        player_def_points: player.def_points,
+                        player_towns_count: player.towns,
+                        alliance_name: player.alliance_name,
+                        alliance_id: player.alliance_id,
+                        alliance_members: player.alliance_members
+                    };
+                }).filter(city => city !== null);
+
+                return { cities: mergedCities, alliances, players: Array.from(playerMap.values()), lastUpdate };
+            } catch (error) {
+                console.error("Erreur lors du chargement des données:", error);
+                throw error;
+            }
+        };
+
+        const generateColorPalette = (count) => {
+            const hues = [];
+            const goldenRatioConjugate = 0.618033988749895;
+            let h = Math.random();
+            for (let i = 0; i < count; i++) {
+                h = (h + goldenRatioConjugate) % 1;
+                hues.push(h * 360);
+            }
+            return hues.map(hue => `hsl(${hue}, 70%, 60%)`);
+        };
+
+        const GrepolisMap = () => {
+            const [data, setData] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState(null);
+            
+            // Sélection stratégique
+            const [selectionMode, setSelectionMode] = useState('player-player'); // 'player-player' ou 'player-alliance'
+            const [selectedEntity1, setSelectedEntity1] = useState(null); // Joueur 1
+            const [selectedEntity2, setSelectedEntity2] = useState(null); // Joueur 2 ou Alliance
+            
+            const [searchTerm1, setSearchTerm1] = useState('');
+            const [searchTerm2, setSearchTerm2] = useState('');
+            
+            const [targetCity, setTargetCity] = useState(null);
+            const [hoveredCity, setHoveredCity] = useState(null);
+            const [distanceMode, setDistanceMode] = useState(false);
+            const [citiesForDistance, setCitiesForDistance] = useState([]);
+            
+            const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
+            const mapRef = useRef(null);
+            const isDragging = useRef(false);
+            const dragStart = useRef({ x: 0, y: 0 });
+
+            // Touch
+            const lastTouchDistance = useRef(null);
+            const lastTouchCenter = useRef(null);
+
+            useEffect(() => {
+                const loadData = async () => {
+                    try {
+                        const result = await fetchData();
+                        setData(result);
+                    } catch (err) {
+                        setError(err.message);
+                    } finally {
+                        setLoading(false);
+                    }
+                };
+                loadData();
+            }, []);
+
+            // Couleurs pour les entités sélectionnées
+            const entity1Color = '#00ff00'; // Vert pour entité 1
+            const entity2Color = '#ff00ff'; // Magenta pour entité 2
+            const neutralColor = '#666666'; // Gris pour le reste
+
+            // Villes filtrées selon la sélection
+            const filteredCities = useMemo(() => {
+                if (!data) return [];
+                
+                // Si aucune entité sélectionnée, montrer toutes les villes en gris
+                if (!selectedEntity1 && !selectedEntity2) {
+                    return data.cities;
+                }
+
+                return data.cities;
+            }, [data, selectedEntity1, selectedEntity2]);
+
+            // Fonction pour obtenir la couleur d'une ville
+            const getCityColor = useCallback((city) => {
+                if (!selectedEntity1 && !selectedEntity2) {
+                    return neutralColor;
+                }
+
+                // Mode Joueur vs Joueur
+                if (selectionMode === 'player-player') {
+                    if (selectedEntity1 && city.player_id === selectedEntity1.id) {
+                        return entity1Color;
+                    }
+                    if (selectedEntity2 && city.player_id === selectedEntity2.id) {
+                        return entity2Color;
+                    }
+                    return neutralColor;
+                }
+
+                // Mode Joueur vs Alliance
+                if (selectionMode === 'player-alliance') {
+                    if (selectedEntity1 && city.player_id === selectedEntity1.id) {
+                        return entity1Color;
+                    }
+                    if (selectedEntity2 && city.alliance_id === selectedEntity2.id) {
+                        return entity2Color;
+                    }
+                    return neutralColor;
+                }
+
+                return neutralColor;
+            }, [selectedEntity1, selectedEntity2, selectionMode]);
+
+            // Statistiques
+            const statistics = useMemo(() => {
+                if (!data || (!selectedEntity1 && !selectedEntity2)) return null;
+
+                const entity1Cities = selectionMode === 'player-player'
+                    ? filteredCities.filter(c => selectedEntity1 && c.player_id === selectedEntity1.id)
+                    : filteredCities.filter(c => selectedEntity1 && c.player_id === selectedEntity1.id);
+
+                const entity2Cities = selectionMode === 'player-player'
+                    ? filteredCities.filter(c => selectedEntity2 && c.player_id === selectedEntity2.id)
+                    : filteredCities.filter(c => selectedEntity2 && c.alliance_id === selectedEntity2.id);
+
+                return {
+                    entity1: {
+                        name: selectedEntity1?.name || '-',
+                        cities: entity1Cities.length,
+                        totalPoints: entity1Cities.reduce((sum, c) => sum + c.points, 0),
+                        avgPoints: entity1Cities.length > 0 ? Math.round(entity1Cities.reduce((sum, c) => sum + c.points, 0) / entity1Cities.length) : 0
+                    },
+                    entity2: {
+                        name: selectedEntity2?.name || '-',
+                        cities: entity2Cities.length,
+                        totalPoints: entity2Cities.reduce((sum, c) => sum + c.points, 0),
+                        avgPoints: entity2Cities.length > 0 ? Math.round(entity2Cities.reduce((sum, c) => sum + c.points, 0) / entity2Cities.length) : 0
+                    }
+                };
+            }, [data, filteredCities, selectedEntity1, selectedEntity2, selectionMode]);
+
+            // Filtres de recherche
+            const filteredPlayers1 = useMemo(() => {
+                if (!data || !searchTerm1) return [];
+                return data.players
+                    .filter(p => p.name.toLowerCase().includes(searchTerm1.toLowerCase()))
+                    .slice(0, 10);
+            }, [data, searchTerm1]);
+
+            const filteredSearchResults2 = useMemo(() => {
+                if (!data || !searchTerm2) return [];
+                
+                if (selectionMode === 'player-player') {
+                    return data.players
+                        .filter(p => p.name.toLowerCase().includes(searchTerm2.toLowerCase()))
+                        .slice(0, 10);
+                } else {
+                    return data.alliances
+                        .filter(a => a.name.toLowerCase().includes(searchTerm2.toLowerCase()))
+                        .slice(0, 10);
+                }
+            }, [data, searchTerm2, selectionMode]);
+
+            // Gestion des clics sur la carte
+            const handleCityClick = useCallback((city) => {
+                if (distanceMode) {
+                    if (citiesForDistance.length === 0) {
+                        setCitiesForDistance([city]);
+                    } else if (citiesForDistance.length === 1) {
+                        setCitiesForDistance([citiesForDistance[0], city]);
+                    } else {
+                        setCitiesForDistance([city]);
+                    }
+                } else {
+                    setTargetCity(city);
+                }
+            }, [distanceMode, citiesForDistance]);
+
+            const resetDistanceMode = () => {
+                setDistanceMode(false);
+                setCitiesForDistance([]);
+            };
+
+            // Zoom/Pan
+            const handleWheel = useCallback((e) => {
+                e.preventDefault();
+                const delta = e.deltaY > 0 ? 0.9 : 1.1;
+                setTransform(prev => ({
+                    ...prev,
+                    scale: Math.max(0.5, Math.min(10, prev.scale * delta))
+                }));
+            }, []);
+
+            useEffect(() => {
+                const svg = mapRef.current;
+                if (svg) {
+                    svg.addEventListener('wheel', handleWheel, { passive: false });
+                    return () => svg.removeEventListener('wheel', handleWheel);
+                }
+            }, [handleWheel]);
+
+            const handleMouseDown = (e) => {
+                if (e.button === 0) {
+                    isDragging.current = true;
+                    dragStart.current = { x: e.clientX - transform.x, y: e.clientY - transform.y };
+                }
+            };
+
+            const handleMouseMove = (e) => {
+                if (isDragging.current) {
+                    setTransform(prev => ({
+                        ...prev,
+                        x: e.clientX - dragStart.current.x,
+                        y: e.clientY - dragStart.current.y
+                    }));
+                }
+            };
+
+            const handleMouseUp = () => {
+                isDragging.current = false;
+            };
+
+            const getTouchDistance = (touches) => {
+                const dx = touches[0].clientX - touches[1].clientX;
+                const dy = touches[0].clientY - touches[1].clientY;
+                return Math.sqrt(dx * dx + dy * dy);
+            };
+
+            const getTouchCenter = (touches) => {
+                return {
+                    x: (touches[0].clientX + touches[1].clientX) / 2,
+                    y: (touches[0].clientY + touches[1].clientY) / 2
+                };
+            };
+
+            const handleTouchStart = (e) => {
+                if (e.touches.length === 2) {
+                    e.preventDefault();
+                    lastTouchDistance.current = getTouchDistance(e.touches);
+                    lastTouchCenter.current = getTouchCenter(e.touches);
+                } else if (e.touches.length === 1) {
+                    isDragging.current = true;
+                    dragStart.current = {
+                        x: e.touches[0].clientX - transform.x,
+                        y: e.touches[0].clientY - transform.y
+                    };
+                }
+            };
+
+            const handleTouchMove = (e) => {
+                if (e.touches.length === 2) {
+                    e.preventDefault();
+                    const currentDistance = getTouchDistance(e.touches);
+                    const currentCenter = getTouchCenter(e.touches);
+                    
+                    if (lastTouchDistance.current !== null) {
+                        const scaleFactor = currentDistance / lastTouchDistance.current;
+                        setTransform(prev => ({
+                            ...prev,
+                            scale: Math.max(0.5, Math.min(10, prev.scale * scaleFactor))
+                        }));
+                    }
+                    
+                    lastTouchDistance.current = currentDistance;
+                    lastTouchCenter.current = currentCenter;
+                } else if (e.touches.length === 1 && isDragging.current) {
+                    e.preventDefault();
+                    setTransform(prev => ({
+                        ...prev,
+                        x: e.touches[0].clientX - dragStart.current.x,
+                        y: e.touches[0].clientY - dragStart.current.y
+                    }));
+                }
+            };
+
+            const handleTouchEnd = (e) => {
+                if (e.touches.length < 2) {
+                    lastTouchDistance.current = null;
+                    lastTouchCenter.current = null;
+                }
+                if (e.touches.length === 0) {
+                    isDragging.current = false;
+                }
+            };
+
+            // Rendu des océans et grille
+            const renderOceanSquares = () => {
+                const squares = [];
+                for (let x = 0; x < 10; x++) {
+                    for (let y = 0; y < 10; y++) {
+                        const oceanNumber = `${x}${y}`;
+                        squares.push(
+                            <rect
+                                key={`ocean-${x}-${y}`}
+                                x={x * 100}
+                                y={y * 100}
+                                width={100}
+                                height={100}
+                                fill="rgba(30, 41, 59, 0.3)"
+                                stroke="rgba(71, 85, 105, 0.5)"
+                                strokeWidth="0.5"
+                            />
+                        );
+                        squares.push(
+                            <text
+                                key={`ocean-text-${x}-${y}`}
+                                x={x * 100 + 50}
+                                y={y * 100 + 50}
+                                textAnchor="middle"
+                                dominantBaseline="middle"
+                                fill="rgba(148, 163, 184, 0.6)"
+                                fontSize="16"
+                                fontWeight="bold"
+                            >
+                                {oceanNumber}
+                            </text>
+                        );
+                    }
+                }
+                return squares;
+            };
+
+            const renderSubGrid = () => {
+                const lines = [];
+                for (let i = 1; i < 100; i++) {
+                    if (i % 10 !== 0) {
+                        lines.push(
+                            <line key={`v-${i}`} x1={i * 10} y1={0} x2={i * 10} y2={1000} stroke="rgba(71, 85, 105, 0.2)" strokeWidth="0.2" />
+                        );
+                        lines.push(
+                            <line key={`h-${i}`} x1={0} y1={i * 10} x2={1000} y2={i * 10} stroke="rgba(71, 85, 105, 0.2)" strokeWidth="0.2" />
+                        );
+                    }
+                }
+                return lines;
+            };
+
+            const renderDistanceLines = () => {
+                if (distanceMode && citiesForDistance.length === 2) {
+                    const [city1, city2] = citiesForDistance;
+                    return (
+                        <line
+                            x1={city1.x}
+                            y1={city1.y}
+                            x2={city2.x}
+                            y2={city2.y}
+                            stroke="#00ff00"
+                            strokeWidth="1"
+                            className="distance-line"
+                        />
+                    );
+                }
+                return null;
+            };
+
+            const renderCities = useMemo(() => {
+                return filteredCities.map(city => {
+                    const color = getCityColor(city);
+                    const isHighlighted = city === hoveredCity || city === targetCity;
+                    const isInDistanceMode = citiesForDistance.includes(city);
+                    
+                    return (
+                        <circle
+                            key={city.id}
+                            cx={city.x}
+                            cy={city.y}
+                            r={isHighlighted ? 2 : 1.5}
+                            fill={color}
+                            stroke={isHighlighted || isInDistanceMode ? '#ffffff' : 'none'}
+                            strokeWidth={isHighlighted || isInDistanceMode ? 0.5 : 0}
+                            opacity={color === neutralColor ? 0.3 : 0.9}
+                            style={{ cursor: 'pointer' }}
+                            onMouseEnter={() => setHoveredCity(city)}
+                            onMouseLeave={() => setHoveredCity(null)}
+                            onClick={() => handleCityClick(city)}
+                        />
+                    );
+                });
+            }, [filteredCities, hoveredCity, targetCity, citiesForDistance, getCityColor, handleCityClick]);
+
+            // Interface utilisateur
+            const renderHeader = () => (
+                <div className="bg-slate-800 text-white p-4 shadow-lg">
+                    <h1 className="text-xl md:text-2xl font-bold text-center text-amber-400 mb-4">
+                        🎯 Carte Stratégique - Opérations Grepolis
+                    </h1>
+                    
+                    {/* Mode de sélection */}
+                    <div className="flex justify-center gap-2 mb-4">
+                        <button
+                            onClick={() => {
+                                setSelectionMode('player-player');
+                                setSelectedEntity2(null);
+                                setSearchTerm2('');
+                            }}
+                            className={`px-4 py-2 rounded-lg transition-colors ${
+                                selectionMode === 'player-player'
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-slate-600 text-slate-300 hover:bg-slate-500'
+                            }`}
+                        >
+                            Joueur vs Joueur
+                        </button>
+                        <button
+                            onClick={() => {
+                                setSelectionMode('player-alliance');
+                                setSelectedEntity2(null);
+                                setSearchTerm2('');
+                            }}
+                            className={`px-4 py-2 rounded-lg transition-colors ${
+                                selectionMode === 'player-alliance'
+                                    ? 'bg-purple-600 text-white'
+                                    : 'bg-slate-600 text-slate-300 hover:bg-slate-500'
+                            }`}
+                        >
+                            Joueur vs Alliance
+                        </button>
+                    </div>
+
+                    {/* Sélecteurs d'entités */}
+                    <div className="grid md:grid-cols-2 gap-4">
+                        {/* Entité 1 (toujours un joueur) */}
+                        <div className="relative">
+                            <label className="block text-sm font-semibold mb-1" style={{ color: entity1Color }}>
+                                🎮 Joueur 1
+                            </label>
+                            <input
+                                type="text"
+                                value={searchTerm1}
+                                onChange={(e) => setSearchTerm1(e.target.value)}
+                                placeholder="Rechercher un joueur..."
+                                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-green-500"
+                            />
+                            {searchTerm1 && filteredPlayers1.length > 0 && (
+                                <div className="absolute z-10 w-full mt-1 bg-slate-700 border border-slate-600 rounded-lg max-h-48 overflow-y-auto">
+                                    {filteredPlayers1.map(player => (
+                                        <div
+                                            key={player.id}
+                                            onClick={() => {
+                                                setSelectedEntity1(player);
+                                                setSearchTerm1('');
+                                            }}
+                                            className="px-3 py-2 hover:bg-slate-600 cursor-pointer text-sm"
+                                        >
+                                            <div className="font-semibold">{player.name}</div>
+                                            <div className="text-xs text-slate-400">
+                                                {player.alliance_name} • {player.towns} villes • {player.points.toLocaleString('fr-FR')} pts
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            {selectedEntity1 && (
+                                <div className="mt-2 p-2 bg-slate-700 rounded-lg flex justify-between items-center">
+                                    <span className="text-sm font-semibold">{selectedEntity1.name}</span>
+                                    <button
+                                        onClick={() => setSelectedEntity1(null)}
+                                        className="text-red-400 hover:text-red-300"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Entité 2 (joueur ou alliance selon le mode) */}
+                        <div className="relative">
+                            <label className="block text-sm font-semibold mb-1" style={{ color: entity2Color }}>
+                                {selectionMode === 'player-player' ? '🎮 Joueur 2' : '🛡️ Alliance'}
+                            </label>
+                            <input
+                                type="text"
+                                value={searchTerm2}
+                                onChange={(e) => setSearchTerm2(e.target.value)}
+                                placeholder={selectionMode === 'player-player' ? 'Rechercher un joueur...' : 'Rechercher une alliance...'}
+                                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-purple-500"
+                            />
+                            {searchTerm2 && filteredSearchResults2.length > 0 && (
+                                <div className="absolute z-10 w-full mt-1 bg-slate-700 border border-slate-600 rounded-lg max-h-48 overflow-y-auto">
+                                    {filteredSearchResults2.map(entity => (
+                                        <div
+                                            key={entity.id}
+                                            onClick={() => {
+                                                setSelectedEntity2(entity);
+                                                setSearchTerm2('');
+                                            }}
+                                            className="px-3 py-2 hover:bg-slate-600 cursor-pointer text-sm"
+                                        >
+                                            <div className="font-semibold">{entity.name}</div>
+                                            <div className="text-xs text-slate-400">
+                                                {selectionMode === 'player-player' 
+                                                    ? `${entity.alliance_name} • ${entity.towns} villes • ${entity.points.toLocaleString('fr-FR')} pts`
+                                                    : `${entity.members} membres • ${entity.towns} villes • ${entity.points.toLocaleString('fr-FR')} pts`
+                                                }
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            {selectedEntity2 && (
+                                <div className="mt-2 p-2 bg-slate-700 rounded-lg flex justify-between items-center">
+                                    <span className="text-sm font-semibold">{selectedEntity2.name}</span>
+                                    <button
+                                        onClick={() => setSelectedEntity2(null)}
+                                        className="text-red-400 hover:text-red-300"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Statistiques comparatives */}
+                    {statistics && (
+                        <div className="mt-4 grid md:grid-cols-2 gap-4 text-sm">
+                            <div className="bg-slate-700 p-3 rounded-lg" style={{ borderLeft: `4px solid ${entity1Color}` }}>
+                                <div className="font-bold mb-2">{statistics.entity1.name}</div>
+                                <div className="space-y-1 text-xs">
+                                    <div>🏛️ Villes: <span className="font-semibold">{statistics.entity1.cities}</span></div>
+                                    <div>⭐ Points totaux: <span className="font-semibold">{statistics.entity1.totalPoints.toLocaleString('fr-FR')}</span></div>
+                                    <div>📊 Moy/ville: <span className="font-semibold">{statistics.entity1.avgPoints.toLocaleString('fr-FR')}</span></div>
+                                </div>
+                            </div>
+                            <div className="bg-slate-700 p-3 rounded-lg" style={{ borderLeft: `4px solid ${entity2Color}` }}>
+                                <div className="font-bold mb-2">{statistics.entity2.name}</div>
+                                <div className="space-y-1 text-xs">
+                                    <div>🏛️ Villes: <span className="font-semibold">{statistics.entity2.cities}</span></div>
+                                    <div>⭐ Points totaux: <span className="font-semibold">{statistics.entity2.totalPoints.toLocaleString('fr-FR')}</span></div>
+                                    <div>📊 Moy/ville: <span className="font-semibold">{statistics.entity2.avgPoints.toLocaleString('fr-FR')}</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Boutons de contrôle */}
+                    <div className="mt-4 flex flex-wrap gap-2 justify-center">
+                        <button
+                            onClick={() => setTransform({ x: 0, y: 0, scale: 1 })}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                        >
+                            Réinitialiser la vue
+                        </button>
+                        <button
+                            onClick={() => {
+                                setDistanceMode(!distanceMode);
+                                setCitiesForDistance([]);
+                            }}
+                            className={`px-4 py-2 rounded-lg transition-colors text-sm ${
+                                distanceMode
+                                    ? 'bg-green-600 text-white hover:bg-green-700'
+                                    : 'bg-slate-600 text-white hover:bg-slate-500'
+                            }`}
+                        >
+                            {distanceMode ? 'Mode Distance: ON' : 'Mode Distance: OFF'}
+                        </button>
+                    </div>
+                    
+                    {data && (
+                        <div className="text-center text-xs text-slate-400 mt-2">
+                            Dernière mise à jour: {data.lastUpdate}
+                        </div>
+                    )}
+                </div>
+            );
+
+            const renderSidebar = () => {
+                const displayCity = hoveredCity || targetCity;
+
+                return (
+                    <div className="sidebar md:w-80 w-full bg-slate-800 text-white overflow-y-auto p-4">
+                        <h2 className="text-lg font-bold mb-4 text-amber-400">Informations</h2>
+
+                        {distanceMode && citiesForDistance.length > 0 ? (
+                            <div className="p-4 bg-slate-700 rounded-lg shadow-inner">
+                                <h3 className="text-lg font-semibold text-green-400 mb-2">Mode Distance</h3>
+                                {citiesForDistance.length === 1 && (
+                                    <p>Ville 1 sélectionnée : <span className="font-bold">{citiesForDistance[0].name}</span>. Cliquez sur une deuxième ville.</p>
+                                )}
+                                {citiesForDistance.length === 2 && (
+                                    <div className="text-center">
+                                        <div className="text-green-200 text-sm">Distance calculée:</div>
+                                        <div className="text-green-100 font-bold text-xl text-center mt-2">
+                                            {calculateDistance(
+                                                citiesForDistance[0].x, 
+                                                citiesForDistance[0].y, 
+                                                citiesForDistance[1].x, 
+                                                citiesForDistance[1].y 
+                                            )} unités
+                                        </div>
+                                    </div>
+                                )}
+                                <button onClick={resetDistanceMode} className="w-full mt-4 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors">
+                                    Quitter le mode Distance
+                                </button>
+                            </div>
+                        ) : displayCity ? (
+                            <div className="space-y-4">
+                                <div className="bg-slate-700 p-3 rounded-lg space-y-1">
+                                    <div className="font-semibold text-white border-b border-slate-600 pb-1 mb-1">Détails de la Ville</div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-amber-300">Nom:</span> 
+                                        <span className="font-bold">{displayCity.name}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-amber-300">Position:</span> 
+                                        <span>({displayCity.x}, {displayCity.y})</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-amber-300">Océan:</span> 
+                                        <span>{displayCity.ocean}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-amber-300">Points:</span> 
+                                        <span className="font-bold text-green-400">{displayCity.points.toLocaleString('fr-FR')}</span>
+                                    </div>
+                                </div>
+
+                                <div className="bg-slate-700 p-3 rounded-lg space-y-1">
+                                    <div className="font-semibold text-white border-b border-slate-600 pb-1 mb-1">Détails du Joueur</div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-amber-300">Joueur:</span> 
+                                        <span className="font-bold">{displayCity.player_name}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-amber-300">Rang:</span> 
+                                        <span>{displayCity.player_rank}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-amber-300">Points:</span> 
+                                        <span>{displayCity.player_points.toLocaleString('fr-FR')}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-amber-300">Nombre de Villes:</span> 
+                                        <span>{displayCity.player_towns_count}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-amber-300">Points Offensifs:</span> 
+                                        <span>{displayCity.player_off_points.toLocaleString('fr-FR')}</span> 
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-amber-300">Points Défensifs:</span> 
+                                        <span>{displayCity.player_def_points.toLocaleString('fr-FR')}</span>
+                                    </div>
+                                </div>
+
+                                {displayCity.alliance_name && (
+                                    <div className="bg-slate-700 p-3 rounded-lg space-y-1">
+                                        <div className="font-semibold text-white border-b border-slate-600 pb-1 mb-1">Détails de l'Alliance</div>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-amber-300">Alliance:</span> 
+                                            <span className="font-bold">{displayCity.alliance_name}</span>
+                                        </div>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-amber-300">Membres:</span> 
+                                            <span>{displayCity.alliance_members}</span>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="p-4 bg-slate-700 rounded-lg shadow-inner">
+                                <p className="mb-4">Sélectionnez deux entités ci-dessus pour visualiser leur comparaison stratégique.</p>
+                                <div className="pt-4 mt-4 border-t border-slate-600">
+                                    <h4 className="text-sm font-semibold text-amber-400 mb-2">Légende des couleurs</h4>
+                                    <div className="space-y-2 text-sm">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-4 h-4 rounded" style={{ backgroundColor: entity1Color }}></div>
+                                            <span>Entité 1 (Joueur sélectionné)</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-4 h-4 rounded" style={{ backgroundColor: entity2Color }}></div>
+                                            <span>Entité 2 (Joueur ou Alliance)</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-4 h-4 rounded" style={{ backgroundColor: neutralColor }}></div>
+                                            <span>Autres villes</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="pt-4 mt-4 border-t border-slate-600">
+                                    <h4 className="text-sm font-semibold text-amber-400 mb-2">Contrôles</h4>
+                                    <div className="text-sm text-slate-300 space-y-1">
+                                        <div>🖱️ <strong>Molette</strong> : Zoom avant/arrière</div>
+                                        <div>👆 <strong>Glisser</strong> : Déplacer la carte</div>
+                                        <div>👆 <strong>Pincer/Écarter</strong> : Zoomer (tactile)</div>
+                                        <div>👆 <strong>Clic</strong> : Sélectionner une ville</div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            };
+
+            if (loading) {
+                return (
+                    <div className="w-full h-screen bg-slate-900 flex items-center justify-center">
+                        <div className="text-white text-xl">Chargement des données...</div>
+                    </div>
+                );
+            }
+
+            if (error) {
+                return (
+                    <div className="w-full h-screen bg-slate-900 flex items-center justify-center">
+                        <div className="text-red-500 text-xl">Erreur: {error}</div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="w-full h-screen bg-slate-900 flex flex-col">
+                    {renderHeader()}
+
+                    <div className="flex flex-1 overflow-hidden md:flex-row flex-col">
+                        <div className="flex-1 relative overflow-hidden map-wrapper">
+                            <svg 
+                                ref={mapRef} 
+                                viewBox="0 0 1000 1000" 
+                                preserveAspectRatio="xMidYMid meet"
+                                className="w-full h-full map-container"
+                                style={{
+                                    transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
+                                    transformOrigin: 'top left'
+                                }}
+                                onMouseDown={handleMouseDown}
+                                onMouseMove={handleMouseMove}
+                                onMouseUp={handleMouseUp}
+                                onMouseLeave={handleMouseUp}
+                                
+                                onTouchStart={handleTouchStart}  
+                                onTouchMove={handleTouchMove}    
+                                onTouchEnd={handleTouchEnd}      
+                                onTouchCancel={handleTouchEnd}
+                            >
+                                <g>
+                                    {renderOceanSquares()} 
+                                    {renderSubGrid()} 
+                                    {renderDistanceLines()} 
+                                    {renderCities}
+                                </g>
+                            </svg>
+                        </div>
+                        
+                        {renderSidebar()}
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<GrepolisMap />, document.getElementById('root'));
+    </script>
+</body>
+</html>
