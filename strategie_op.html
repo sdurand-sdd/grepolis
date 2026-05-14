@@ -337,18 +337,28 @@
                 const oceanX = parseInt(oceanNumber[0]);
                 const oceanY = parseInt(oceanNumber[1]);
                 
+                // Centre de l'océan dans les coordonnées SVG (viewBox 0-1000)
                 const oceanCenterX = oceanX * 100 + 50;
                 const oceanCenterY = oceanY * 100 + 50;
                 
                 const mapElement = mapRef.current;
-                if (!mapElement) return;
+                if (!mapElement) {
+                    // Si l'élément n'est pas prêt, on réessaye après un court délai
+                    setTimeout(() => zoomToOcean(oceanNumber), 100);
+                    return;
+                }
                 
                 const rect = mapElement.getBoundingClientRect();
+                
+                // Échelle de zoom (plus grand = plus zoomé)
+                const newScale = 3.5;
+                
+                // Calculer la position pour centrer l'océan
+                // On doit tenir compte du fait que le SVG a un viewBox de 1000x1000
                 const viewportCenterX = rect.width / 2;
                 const viewportCenterY = rect.height / 2;
                 
-                const newScale = 3;
-                
+                // Position nécessaire pour centrer l'océan
                 const newX = viewportCenterX - (oceanCenterX * newScale);
                 const newY = viewportCenterY - (oceanCenterY * newScale);
                 
@@ -358,7 +368,14 @@
             // Effet pour zoomer automatiquement quand un océan est sélectionné
             useEffect(() => {
                 if (selectedOcean) {
-                    zoomToOcean(selectedOcean);
+                    // Petit délai pour s'assurer que le DOM est prêt
+                    const timer = setTimeout(() => {
+                        zoomToOcean(selectedOcean);
+                    }, 50);
+                    return () => clearTimeout(timer);
+                } else {
+                    // Réinitialiser le zoom si aucun océan sélectionné
+                    setTransform({ x: 0, y: 0, scale: 1 });
                 }
             }, [selectedOcean, zoomToOcean]);
 
@@ -716,15 +733,24 @@
                                 })}
                             </select>
                             {selectedOcean && (
-                                <button
-                                    onClick={() => {
-                                        setSelectedOcean('');
-                                        setTransform({ x: 0, y: 0, scale: 1 });
-                                    }}
-                                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
-                                >
-                                    Réinitialiser
-                                </button>
+                                <>
+                                    <button
+                                        onClick={() => zoomToOcean(selectedOcean)}
+                                        className="px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors text-sm whitespace-nowrap"
+                                        title="Zoomer sur cet océan"
+                                    >
+                                        🔍 Zoom
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setSelectedOcean('');
+                                            setTransform({ x: 0, y: 0, scale: 1 });
+                                        }}
+                                        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+                                    >
+                                        ✕
+                                    </button>
+                                </>
                             )}
                         </div>
                     </div>
