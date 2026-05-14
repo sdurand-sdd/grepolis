@@ -3,18 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stratégie OP - Grepolis</title>
+    <title>Stratégie OP - Grepolis Pro</title>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { margin: 0; padding: 0; overflow: hidden; }
+        body { margin: 0; padding: 0; overflow: hidden; background-color: #0f172a; }
         .map-container { cursor: grab; touch-action: none; }
         .map-container:active { cursor: grabbing; }
         .distance-line { stroke-dasharray: 5,5; animation: dash 1s linear infinite; }
         @keyframes dash { to { stroke-dashoffset: -10; } }
-        .map-wrapper { height: 100%; min-height: 40vh; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #1e293b; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
     </style>
 </head>
 <body>
@@ -23,7 +25,6 @@
     <script type="text/babel">
         const { useState, useMemo, useCallback, useEffect, useRef } = React;
 
-        // --- Fonctions Utilitaires ---
         const calculateDistance = (x1, y1, x2, y2) => Math.sqrt(Math.pow(x1 - x2, 2) + Math.pow(y1 - y2, 2)).toFixed(2);
         const getGrepolisOcean = (x, y) => `${Math.floor(x / 100)}${Math.floor(y / 100)}`;
         const decodeName = (str) => {
@@ -53,13 +54,12 @@
             const [playerSearch, setPlayerSearch] = useState('');
             const [allianceSearch, setAllianceSearch] = useState('');
             const [selectedOcean, setSelectedOcean] = useState('all');
-            const [selectedCity, setSelectedCity] = useState(null);
+            const [selectedCluster, setSelectedCluster] = useState(null);
             const [citiesForDistance, setCitiesForDistance] = useState([]);
             const [distanceMode, setDistanceMode] = useState(false);
 
             const mapRef = useRef(null);
 
-            // Chargement des données
             useEffect(() => {
                 Promise.all([
                     fetch('alliances.txt').then(r => r.text()),
@@ -94,194 +94,142 @@
                 return colors;
             }, [data.alliances]);
 
-            // FILTRAGE STRATÉGIQUE (Multi-noms séparés par virgules)
-            const filteredCities = useMemo(() => {
+            // Filtrage et Groupement par position
+            const filteredGroupedCities = useMemo(() => {
                 const pTargets = playerSearch.toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
                 const aTargets = allianceSearch.toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
 
-                return data.cities.filter(c => {
+                const filtered = data.cities.filter(c => {
                     const matchOcean = selectedOcean === 'all' || c.ocean === selectedOcean;
                     if (!matchOcean) return false;
-
                     const matchP = pTargets.length > 0 ? pTargets.some(t => c.player_name.toLowerCase().includes(t)) : false;
                     const matchA = aTargets.length > 0 ? aTargets.some(t => c.alliance_name.toLowerCase().includes(t)) : false;
-
-                    if (pTargets.length === 0 && aTargets.length === 0) return true;
-                    return matchP || matchA;
+                    return (pTargets.length === 0 && aTargets.length === 0) ? true : (matchP || matchA);
                 });
+
+                const groups = {};
+                filtered.forEach(c => {
+                    const key = `${c.x},${c.y}`;
+                    if (!groups[key]) groups[key] = [];
+                    groups[key].push(c);
+                });
+                return Object.values(groups);
             }, [data.cities, playerSearch, allianceSearch, selectedOcean]);
 
-            // --- Rendu des composants de la carte ---
-            const renderGrid = () => {
-                const lines = [];
-                for (let i = 0; i <= 1000; i += 100) {
-                    lines.push(<line key={`h${i}`} x1="0" y1={i} x2="1000" y2={i} stroke="#334155" strokeWidth="1" />);
-                    lines.push(<line key={`v${i}`} x1={i} y1="0" x2={i} y2="1000" stroke="#334155" strokeWidth="1" />);
-                }
-                const numbers = [];
-                for (let x = 0; x < 10; x++) {
-                    for (let y = 0; y < 10; y++) {
-                        numbers.push(
-                            <text key={`${x}${y}`} x={x * 100 + 5} y={y * 100 + 20} fill="#475569" fontSize="12" fontWeight="bold" pointerEvents="none">
-                                {x}{y}
-                            </text>
-                        );
-                    }
-                }
-                return <g>{lines}{numbers}</g>;
-            };
-
-            // Zoom intelligent
             const zoomToFit = () => {
-                if (filteredCities.length === 0) return;
-                const xs = filteredCities.map(c => c.x);
-                const ys = filteredCities.map(c => c.y);
-                const minX = Math.min(...xs), maxX = Math.max(...xs);
-                const minY = Math.min(...ys), maxY = Math.max(...ys);
+                if (filteredGroupedCities.length === 0) return;
+                const flat = filteredGroupedCities.flat();
+                const xs = flat.map(c => c.x), ys = flat.map(c => c.y);
+                const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
                 const scale = Math.min(800 / (maxX - minX + 50), 800 / (maxY - minY + 50), 10);
                 setTransform({ x: 500 - ((minX + maxX) / 2) * scale, y: 500 - ((minY + maxY) / 2) * scale, scale });
             };
 
-            if (loading) return <div className="h-screen bg-slate-900 flex items-center justify-center text-white text-2xl">Chargement de la carte...</div>;
+            const allPlayerCities = useMemo(() => {
+                if (!selectedCluster) return [];
+                const pId = selectedCluster[0].player_id;
+                return data.cities.filter(c => c.player_id === pId).sort((a, b) => a.ocean.localeCompare(b.ocean));
+            }, [selectedCluster, data.cities]);
 
             return (
-                <div className="h-screen bg-slate-900 flex flex-col font-sans">
-                    {/* Header */}
-                    <div className="bg-slate-800 p-3 border-b border-slate-700 shadow-xl z-20">
-                        <div className="flex flex-wrap gap-3 items-center">
-                            <h2 className="text-amber-400 font-bold mr-4 text-lg">⚔️ STRATÉGIE OP</h2>
-                            <input 
-                                placeholder="👤 Joueurs (ex: J1, J2...)" 
-                                className="bg-slate-700 text-white px-3 py-1.5 rounded border border-slate-600 w-full sm:w-64"
-                                value={playerSearch} onChange={e => setPlayerSearch(e.target.value)}
-                            />
-                            <input 
-                                placeholder="🛡️ Alliances (ex: A1, A2...)" 
-                                className="bg-slate-700 text-white px-3 py-1.5 rounded border border-slate-600 w-full sm:w-64"
-                                value={allianceSearch} onChange={e => setAllianceSearch(e.target.value)}
-                            />
-                            <select 
-                                className="bg-slate-700 text-white px-3 py-1.5 rounded"
-                                value={selectedOcean} onChange={e => setSelectedOcean(e.target.value)}
-                            >
-                                <option value="all">Tous Océans</option>
-                                {[...Array(100).keys()].map(i => {
-                                    const val = i.toString().padStart(2, '0');
-                                    return <option key={val} value={val}>Mer {val}</option>
-                                })}
-                            </select>
-                            <button onClick={zoomToFit} className="bg-amber-600 hover:bg-amber-500 text-white px-4 py-1.5 rounded font-bold transition">CENTRER OP</button>
-                            <button 
-                                onClick={() => {setDistanceMode(!distanceMode); setCitiesForDistance([]);}} 
-                                className={`${distanceMode ? 'bg-green-600' : 'bg-slate-600'} text-white px-4 py-1.5 rounded font-bold`}
-                            >📏 DISTANCE</button>
-                        </div>
+                <div className="h-screen flex flex-col bg-slate-950 text-slate-200">
+                    <div className="bg-slate-900 p-3 border-b border-slate-800 flex flex-wrap gap-3 items-center shadow-2xl z-20">
+                        <h2 className="text-amber-400 font-black text-xl mr-4 tracking-tighter">STRATÉGIE OP</h2>
+                        <input placeholder="👤 Joueurs (virgule pour plusieurs)" className="bg-slate-800 border border-slate-700 px-3 py-1.5 rounded w-64" value={playerSearch} onChange={e => setPlayerSearch(e.target.value)} />
+                        <input placeholder="🛡️ Alliances" className="bg-slate-800 border border-slate-700 px-3 py-1.5 rounded w-64" value={allianceSearch} onChange={e => setAllianceSearch(e.target.value)} />
+                        <select className="bg-slate-800 border border-slate-700 px-3 py-1.5 rounded" value={selectedOcean} onChange={e => setSelectedOcean(e.target.value)}>
+                            <option value="all">Tous Océans</option>
+                            {[...Array(100).keys()].map(i => <option key={i} value={i.toString().padStart(2, '0')}>Mer {i.toString().padStart(2, '0')}</option>)}
+                        </select>
+                        <button onClick={zoomToFit} className="bg-amber-600 hover:bg-amber-500 px-4 py-1.5 rounded font-bold transition">CENTRER</button>
+                        <button onClick={() => {setDistanceMode(!distanceMode); setCitiesForDistance([]);}} className={`${distanceMode ? 'bg-green-600' : 'bg-slate-700'} px-4 py-1.5 rounded font-bold`}>📏 MESURER</button>
                     </div>
 
-                    <div className="flex-1 flex overflow-hidden flex-col md:flex-row">
-                        {/* Map Area */}
-                        <div className="flex-1 relative bg-slate-950 cursor-crosshair overflow-hidden">
-                            <svg 
-                                ref={mapRef}
-                                className="w-full h-full map-container"
+                    <div className="flex-1 flex overflow-hidden">
+                        <div className="flex-1 relative bg-slate-950 overflow-hidden">
+                            <svg ref={mapRef} className="w-full h-full map-container"
                                 onMouseDown={(e) => {
-                                    if (e.button === 0) {
-                                        const startX = e.clientX - transform.x;
-                                        const startY = e.clientY - transform.y;
-                                        const onMouseMove = (moveEvent) => {
-                                            setTransform(t => ({ ...t, x: moveEvent.clientX - startX, y: moveEvent.clientY - startY }));
-                                        };
-                                        const onMouseUp = () => {
-                                            window.removeEventListener('mousemove', onMouseMove);
-                                            window.removeEventListener('mouseup', onMouseUp);
-                                        };
-                                        window.addEventListener('mousemove', onMouseMove);
-                                        window.addEventListener('mouseup', onMouseUp);
-                                    }
+                                    if(e.button !== 0) return;
+                                    const sX = e.clientX - transform.x, sY = e.clientY - transform.y;
+                                    const move = (m) => setTransform(t => ({...t, x: m.clientX - sX, y: m.clientY - sY}));
+                                    const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+                                    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
                                 }}
-                                onWheel={(e) => {
-                                    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-                                    setTransform(t => ({ ...t, scale: Math.max(0.1, Math.min(20, t.scale * delta)) }));
-                                }}
+                                onWheel={(e) => setTransform(t => ({...t, scale: Math.max(0.1, Math.min(20, t.scale * (e.deltaY > 0 ? 0.9 : 1.1)))}))}
                             >
                                 <g style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})` }}>
-                                    {renderGrid()}
-                                    
-                                    {/* Rendu des villes individuelles */}
-                                    {filteredCities.map(city => (
-                                        <circle 
-                                            key={city.id}
-                                            cx={city.x} cy={city.y} 
-                                            r={3.5 / Math.sqrt(transform.scale)}
-                                            fill={allianceColors[city.alliance_id] || '#94a3b8'}
-                                            stroke={selectedCity?.id === city.id ? "white" : "black"}
-                                            strokeWidth={0.5 / transform.scale}
-                                            className="hover:brightness-150 transition-all cursor-pointer"
-                                            onClick={() => {
-                                                if (distanceMode) {
-                                                    setCitiesForDistance(prev => prev.length >= 2 ? [city] : [...prev, city]);
-                                                } else {
-                                                    setSelectedCity(city);
-                                                }
-                                            }}
-                                        />
+                                    {/* Grille */}
+                                    {[...Array(11).keys()].map(i => (
+                                        <React.Fragment key={i}>
+                                            <line x1={i*100} y1="0" x2={i*100} y2="1000" stroke="#1e293b" strokeWidth="1" />
+                                            <line x1="0" y1={i*100} x2="1000" y2={i*100} stroke="#1e293b" strokeWidth="1" />
+                                        </React.Fragment>
                                     ))}
-
-                                    {citiesForDistance.length === 2 && (
-                                        <line 
-                                            x1={citiesForDistance[0].x} y1={citiesForDistance[0].y} 
-                                            x2={citiesForDistance[1].x} y2={citiesForDistance[1].y} 
-                                            stroke="#10b981" strokeWidth={2/transform.scale} className="distance-line"
-                                        />
-                                    )}
+                                    {/* Points de villes */}
+                                    {filteredGroupedCities.map((group, idx) => (
+                                        <g key={idx} onClick={() => distanceMode ? setCitiesForDistance(p => p.length >= 2 ? [group[0]] : [...p, group[0]]) : setSelectedCluster(group)} className="cursor-pointer">
+                                            <circle cx={group[0].x} cy={group[0].y} r={4/Math.sqrt(transform.scale)} fill={allianceColors[group[0].alliance_id] || '#64748b'} stroke={selectedCluster?.[0].x === group[0].x && selectedCluster?.[0].y === group[0].y ? "white" : "black"} strokeWidth={0.5/transform.scale} />
+                                            {group.length > 1 && (
+                                                <text x={group[0].x + 3/transform.scale} y={group[0].y - 3/transform.scale} fill="white" fontSize={6/transform.scale} fontWeight="bold" style={{paintOrder: 'stroke', stroke: '#000', strokeWidth: 1/transform.scale}}>
+                                                    {group.length}
+                                                </text>
+                                            )}
+                                        </g>
+                                    ))}
                                 </g>
                             </svg>
                         </div>
 
-                        {/* Sidebar Info */}
-                        <div className="w-full md:w-80 bg-slate-800 border-l border-slate-700 p-4 text-slate-200 overflow-y-auto">
-                            <h3 className="text-xl font-bold text-amber-400 mb-4 border-b border-slate-600 pb-2">Informations</h3>
-                            
-                            {selectedCity ? (
-                                <div className="space-y-3">
-                                    <div className="bg-slate-700 p-3 rounded">
-                                        <p className="text-xs text-slate-400 uppercase">Ville</p>
-                                        <p className="font-bold text-white text-lg">{selectedCity.name}</p>
-                                        <p className="text-sm">Coordonnées: {selectedCity.x} | {selectedCity.y}</p>
-                                    </div>
-                                    <div className="bg-slate-700 p-3 rounded">
-                                        <p className="text-xs text-slate-400 uppercase">Propriétaire</p>
-                                        <p className="font-bold text-amber-300 text-lg">{selectedCity.player_name}</p>
-                                        <p className="text-sm font-semibold" style={{color: allianceColors[selectedCity.alliance_id]}}>
-                                            Alliance : {selectedCity.alliance_name}
-                                        </p>
-                                    </div>
-                                    <div className="bg-slate-700 p-3 rounded">
-                                        <p className="text-xs text-slate-400 uppercase">Points</p>
-                                        <p className="font-bold text-white">{selectedCity.points.toLocaleString()}</p>
-                                    </div>
-                                    <button onClick={() => setSelectedCity(null)} className="w-full py-2 bg-slate-600 rounded mt-4">Fermer</button>
-                                </div>
-                            ) : distanceMode ? (
-                                <div className="bg-green-900/30 border border-green-500 p-3 rounded text-green-400">
-                                    <p className="font-bold uppercase text-xs">Outil de mesure</p>
-                                    {citiesForDistance.length === 2 ? (
-                                        <div>
-                                            <p className="text-3xl font-black my-2">{calculateDistance(citiesForDistance[0].x, citiesForDistance[0].y, citiesForDistance[1].x, citiesForDistance[1].y)}</p>
-                                            <p className="text-xs italic">Distance brute (vitesse 1)</p>
+                        {/* Sidebar */}
+                        <div className="w-96 bg-slate-900 border-l border-slate-800 flex flex-col shadow-2xl">
+                            <div className="p-4 overflow-y-auto custom-scrollbar flex-1">
+                                {selectedCluster ? (
+                                    <div className="space-y-6">
+                                        <div className="border-b border-slate-700 pb-4">
+                                            <h3 className="text-amber-400 font-bold text-lg mb-1">{selectedCluster[0].player_name}</h3>
+                                            <p className="text-sm text-slate-400" style={{color: allianceColors[selectedCluster[0].alliance_id]}}>{selectedCluster[0].alliance_name}</p>
                                         </div>
-                                    ) : (
-                                        <p className="text-sm mt-2 animate-pulse">Sélectionnez deux villes sur la carte...</p>
-                                    )}
-                                </div>
-                            ) : (
-                                <div className="text-slate-400 text-sm space-y-4">
-                                    <p>💡 **Astuce OP :**</p>
-                                    <p>Pour cibler plusieurs joueurs, séparez les noms par des virgules dans la recherche.</p>
-                                    <p>Exemple : `Jean, Pierre, Jacques`</p>
-                                    <p className="text-xs mt-10">Dernière mise à jour : {data.lastUpdate}</p>
-                                </div>
-                            )}
+
+                                        {/* Villes sur cette position */}
+                                        <section>
+                                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex justify-between">
+                                                <span>Villes sur cette île ({selectedCluster[0].x}|{selectedCluster[0].y})</span>
+                                                <span className="bg-slate-800 px-2 rounded text-amber-500">{selectedCluster.length}</span>
+                                            </h4>
+                                            <div className="space-y-2">
+                                                {selectedCluster.map(c => (
+                                                    <div key={c.id} className="bg-slate-800 p-2 rounded border-l-4 border-amber-500 flex justify-between items-center">
+                                                        <span className="font-semibold text-sm truncate pr-2">{c.name}</span>
+                                                        <span className="text-xs font-mono text-slate-400">{c.points} pts</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </section>
+
+                                        {/* Toutes les villes du joueur */}
+                                        <section>
+                                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Toutes les villes du joueur ({allPlayerCities.length})</h4>
+                                            <div className="space-y-1">
+                                                {allPlayerCities.map(c => (
+                                                    <div key={c.id} className="text-xs p-1.5 hover:bg-slate-800 rounded flex justify-between border-b border-slate-800/50">
+                                                        <span className="text-slate-400 font-bold w-8 text-center">M{c.ocean}</span>
+                                                        <span className="flex-1 truncate mx-2">{c.name}</span>
+                                                        <span className="text-slate-500">{c.x}|{c.y}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </section>
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-20 text-slate-500">
+                                        <div className="text-4xl mb-4">🎯</div>
+                                        <p>Sélectionnez une position sur la carte pour voir le détail des villes et du joueur.</p>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="p-3 bg-slate-950 text-[10px] text-slate-600 border-t border-slate-800">
+                                MAJ : {data.lastUpdate} | Grepolis Stratégie OP
+                            </div>
                         </div>
                     </div>
                 </div>
