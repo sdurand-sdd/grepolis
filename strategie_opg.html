@@ -166,7 +166,7 @@
                                         <g key={idx} onClick={() => setSelectedCluster(group)} className="cursor-pointer">
                                             <circle cx={group[0].x} cy={group[0].y} r={4/Math.sqrt(transform.scale)} fill={allianceColors[group[0].alliance_id]} stroke={selectedCluster?.[0].x === group[0].x ? "white" : "black"} strokeWidth={0.5/transform.scale} />
                                             {group.length > 1 && (
-                                                <text x={group[0].x} y={group[0].y} textAnchor="middle" dy="0.3em" fill="white" fontSize={5/transform.scale} fontWeight="bold" style={{paintOrder: 'stroke', stroke: '#000', strokeWidth: 1/transform.scale}}>
+                                                <text x={group[0].x} y={group[0].y} textAnchor="middle" dy="0.3em" fill="white" fontSize={10/transform.scale} fontWeight="bold" style={{paintOrder: 'stroke', stroke: '#000', strokeWidth: 1/transform.scale}}>
                                                     {group.length}
                                                 </text>
                                             )}
