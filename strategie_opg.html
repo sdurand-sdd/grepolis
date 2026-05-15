@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Carte Grepolis - Stratégie OP</title>
+    <title>Stratégie OP - Grepolis</title>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
@@ -12,8 +12,6 @@
         body { margin: 0; padding: 0; overflow: hidden; background-color: #0f172a; }
         .map-container { cursor: grab; touch-action: none; }
         .map-container:active { cursor: grabbing; }
-        .distance-line { stroke-dasharray: 5,5; animation: dash 1s linear infinite; }
-        @keyframes dash { to { stroke-dashoffset: -10; } }
         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: #1e293b; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; border-radius: 10px; }
@@ -23,10 +21,8 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useMemo, useCallback, useEffect, useRef } = React;
+        const { useState, useMemo, useEffect, useRef } = React;
 
-        // --- Fonctions Utilitaires ---
-        const calculateDistance = (x1, y1, x2, y2) => Math.sqrt(Math.pow(x1 - x2, 2) + Math.pow(y1 - y2, 2)).toFixed(2);
         const getGrepolisOcean = (x, y) => `${Math.floor(x / 100)}${Math.floor(y / 100)}`;
         const decodeName = (str) => {
             if (!str) return str;
@@ -52,13 +48,14 @@
             const [data, setData] = useState({ cities: [], alliances: [], lastUpdate: '' });
             const [loading, setLoading] = useState(true);
             const [transform, setTransform] = useState({ x: 0, y: 0, scale: 0.8 });
-            const [playerSearch, setPlayerSearch] = useState('');
-            const [allianceSearch, setAllianceSearch] = useState('');
+            
+            // Champ 1: Cible (Joueur ou Alliance)
+            const [targetSearch, setTargetSearch] = useState('');
+            // Champ 2: Attaquant (Alliance en liste déroulante)
+            const [attackerAlliance, setAttackerAlliance] = useState('');
+            
             const [selectedOcean, setSelectedOcean] = useState('all');
             const [selectedCluster, setSelectedCluster] = useState(null);
-            const [citiesForDistance, setCitiesForDistance] = useState([]);
-            const [distanceMode, setDistanceMode] = useState(false);
-
             const mapRef = useRef(null);
 
             useEffect(() => {
@@ -68,7 +65,7 @@
                     fetch('towns.txt').then(r => r.text()),
                     fetch('last_update.txt').then(r => r.text()).catch(() => 'Date inconnue')
                 ]).then(([allTxt, plaTxt, twnTxt, upTxt]) => {
-                    const alliances = parseData(allTxt, ['id', 'name', 'points', 'towns', 'members']);
+                    const alliances = parseData(allTxt, ['id', 'name', 'points', 'towns', 'members']).sort((a, b) => a.name.localeCompare(b.name));
                     const players = parseData(plaTxt, ['id', 'name', 'alliance_id', 'points', 'rank', 'towns']);
                     const towns = parseData(twnTxt, ['id', 'player_id', 'name', 'x', 'y', 'island_pos', 'points']);
                     
@@ -97,15 +94,21 @@
             }, [data.alliances]);
 
             const filteredGroupedCities = useMemo(() => {
-                const pTargets = playerSearch.toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
-                const aTargets = allianceSearch.toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
+                const targets = targetSearch.toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
+                const attacker = attackerAlliance.toLowerCase();
 
                 const filtered = data.cities.filter(c => {
                     const matchOcean = selectedOcean === 'all' || c.ocean === selectedOcean;
                     if (!matchOcean) return false;
-                    const matchP = pTargets.length > 0 ? pTargets.some(t => c.player_name.toLowerCase().includes(t)) : false;
-                    const matchA = aTargets.length > 0 ? aTargets.some(t => c.alliance_name.toLowerCase().includes(t)) : false;
-                    return (pTargets.length === 0 && aTargets.length === 0) ? true : (matchP || matchA);
+
+                    const isTargetMatch = targets.length > 0 && (
+                        targets.some(t => c.player_name.toLowerCase().includes(t)) || 
+                        targets.some(t => c.alliance_name.toLowerCase().includes(t))
+                    );
+                    const isAttackerMatch = attacker !== '' && c.alliance_name.toLowerCase() === attacker;
+
+                    if (targets.length === 0 && attacker === '') return true;
+                    return isTargetMatch || isAttackerMatch;
                 });
 
                 const groups = {};
@@ -115,9 +118,8 @@
                     groups[key].push(c);
                 });
                 return Object.values(groups);
-            }, [data.cities, playerSearch, allianceSearch, selectedOcean]);
+            }, [data.cities, targetSearch, attackerAlliance, selectedOcean]);
 
-            // Groupement des villes par joueur pour la Sidebar (Style Image Uploadée)
             const clusterByPlayer = useMemo(() => {
                 if (!selectedCluster) return {};
                 return selectedCluster.reduce((acc, city) => {
@@ -127,21 +129,45 @@
                 }, {});
             }, [selectedCluster]);
 
+            if (loading) return <div className="h-screen bg-slate-900 flex items-center justify-center text-white">Initialisation de la carte stratégique...</div>;
+
             return (
                 <div className="h-screen flex flex-col bg-slate-950 text-slate-200">
+                    {/* Header avec menu déroulant */}
                     <div className="bg-slate-900 p-3 border-b border-slate-800 flex flex-wrap gap-3 items-center shadow-2xl z-20">
-                        <h2 className="text-amber-400 font-black text-xl mr-4 tracking-tighter">⚔️ STRATÉGIE OP</h2>
-                        <input placeholder="👤 Joueurs (ex: Jean, Paul)" className="bg-slate-800 border border-slate-700 px-3 py-1.5 rounded w-64 text-sm" value={playerSearch} onChange={e => setPlayerSearch(e.target.value)} />
-                        <input placeholder="🛡️ Alliances" className="bg-slate-800 border border-slate-700 px-3 py-1.5 rounded w-64 text-sm" value={allianceSearch} onChange={e => setAllianceSearch(e.target.value)} />
-                        <select className="bg-slate-800 border border-slate-700 px-3 py-1.5 rounded text-sm" value={selectedOcean} onChange={e => setSelectedOcean(e.target.value)}>
-                            <option value="all">Tous Océans</option>
-                            {[...Array(100).keys()].map(i => <option key={i} value={i.toString().padStart(2, '0')}>Océan {i.toString().padStart(2, '0')}</option>)}
-                        </select>
-                        <button onClick={() => setDistanceMode(!distanceMode)} className={`${distanceMode ? 'bg-green-600' : 'bg-slate-700'} px-4 py-1.5 rounded font-bold text-sm`}>📏 DISTANCE</button>
+                        <div className="flex flex-col">
+                            <span className="text-[10px] text-amber-500 font-bold uppercase ml-1">Cibles (Joueurs/Alliances)</span>
+                            <input 
+                                placeholder="ex: Jean, Paul, Ennemis..." 
+                                className="bg-slate-800 border border-slate-700 px-3 py-1.5 rounded w-64 text-sm focus:ring-1 focus:ring-amber-500 outline-none" 
+                                value={targetSearch} onChange={e => setTargetSearch(e.target.value)} 
+                            />
+                        </div>
+
+                        <div className="flex flex-col">
+                            <span className="text-[10px] text-slate-400 font-bold uppercase ml-1">Attaquants (Désactivé sur carte)</span>
+                            <select 
+                                className="bg-slate-800 border border-slate-700 px-3 py-1.5 rounded w-64 text-sm focus:ring-1 focus:ring-slate-500 outline-none"
+                                value={attackerAlliance}
+                                onChange={e => setAttackerAlliance(e.target.value)}
+                            >
+                                <option value="">-- Choisir Alliance Attaquante --</option>
+                                {data.alliances.map(all => (
+                                    <option key={all.id} value={all.name.toLowerCase()}>{all.name}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="flex flex-col">
+                            <span className="text-[10px] text-slate-400 font-bold uppercase ml-1">Océan</span>
+                            <select className="bg-slate-800 border border-slate-700 px-3 py-1.5 rounded text-sm" value={selectedOcean} onChange={e => setSelectedOcean(e.target.value)}>
+                                <option value="all">Tous</option>
+                                {[...Array(100).keys()].map(i => <option key={i} value={i.toString().padStart(2, '0')}>{i.toString().padStart(2, '0')}</option>)}
+                            </select>
+                        </div>
                     </div>
 
                     <div className="flex-1 flex overflow-hidden">
-                        {/* Map Area */}
                         <div className="flex-1 relative bg-slate-950 overflow-hidden">
                             <svg ref={mapRef} className="w-full h-full map-container"
                                 onMouseDown={(e) => {
@@ -154,69 +180,68 @@
                                 onWheel={(e) => setTransform(t => ({...t, scale: Math.max(0.1, Math.min(20, t.scale * (e.deltaY > 0 ? 0.9 : 1.1)))}))}
                             >
                                 <g style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})` }}>
-                                    {/* Grille */}
+                                    {/* Grille simplifiée */}
                                     {[...Array(11).keys()].map(i => (
                                         <React.Fragment key={i}>
                                             <line x1={i*100} y1="0" x2={i*100} y2="1000" stroke="#1e293b" strokeWidth="0.5" />
                                             <line x1="0" y1={i*100} x2="1000" y2={i*100} stroke="#1e293b" strokeWidth="0.5" />
-                                            <text x={i*100 + 2} y="15" fill="#334155" fontSize="10" fontWeight="bold">{i}0</text>
                                         </React.Fragment>
                                     ))}
-                                    {filteredGroupedCities.map((group, idx) => (
-                                        <g key={idx} onClick={() => setSelectedCluster(group)} className="cursor-pointer">
-                                            <circle cx={group[0].x} cy={group[0].y} r={4/Math.sqrt(transform.scale)} fill={allianceColors[group[0].alliance_id]} stroke={selectedCluster?.[0].x === group[0].x ? "white" : "black"} strokeWidth={0.5/transform.scale} />
-                                            {group.length > 1 && (
-                                                <text x={group[0].x} y={group[0].y} textAnchor="middle" dy="0.3em" fill="white" fontSize={10/transform.scale} fontWeight="bold" style={{paintOrder: 'stroke', stroke: '#000', strokeWidth: 1/transform.scale}}>
-                                                    {group.length}
-                                                </text>
-                                            )}
-                                        </g>
-                                    ))}
+
+                                    {filteredGroupedCities.map((group, idx) => {
+                                        const city0 = group[0];
+                                        const targets = targetSearch.toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
+                                        
+                                        // On vérifie si le cluster contient au moins une ville cible
+                                        const hasTarget = targets.length > 0 && group.some(c => 
+                                            targets.some(t => c.player_name.toLowerCase().includes(t)) || 
+                                            targets.some(t => c.alliance_name.toLowerCase().includes(t))
+                                        );
+
+                                        // Si c'est une cible : Couleur. Si c'est l'attaquant : Invisible/Fantôme
+                                        const circleColor = hasTarget ? (allianceColors[city0.alliance_id] || '#64748b') : 'rgba(71, 85, 105, 0.15)';
+                                        const strokeColor = hasTarget ? "white" : "rgba(255, 255, 255, 0.05)";
+
+                                        return (
+                                            <g key={idx} onClick={() => setSelectedCluster(group)} className="cursor-pointer">
+                                                <circle cx={city0.x} cy={city0.y} r={4/Math.sqrt(transform.scale)} fill={circleColor} stroke={selectedCluster?.[0].x === city0.x ? "#fbbf24" : strokeColor} strokeWidth={hasTarget ? 1/transform.scale : 0.2/transform.scale} />
+                                                {group.length > 1 && (
+                                                    <text x={city0.x} y={city0.y} textAnchor="middle" dy="0.3em" fill={hasTarget ? "white" : "rgba(255,255,255,0.2)"} fontSize={12/transform.scale} fontWeight="bold" style={{paintOrder: 'stroke', stroke: '#000', strokeWidth: 1.5/transform.scale}}>
+                                                        {group.length}
+                                                    </text>
+                                                )}
+                                            </g>
+                                        );
+                                    })}
                                 </g>
                             </svg>
                         </div>
 
-                        {/* Sidebar Style Image Uploadée */}
-                        <div className="w-80 bg-[#1e293b] border-l border-slate-800 flex flex-col shadow-2xl overflow-hidden">
+                        {/* Sidebar */}
+                        <div className="w-80 bg-[#1e293b] border-l border-slate-800 flex flex-col shadow-2xl">
                             <div className="p-4 overflow-y-auto custom-scrollbar flex-1 space-y-4">
                                 {selectedCluster ? (
                                     <>
-                                        <div className="bg-[#2d3748] p-4 rounded-lg shadow-inner">
-                                            <h3 className="text-white font-bold text-base mb-1">Total Villes dans le Cluster:</h3>
-                                            <p className="text-amber-400 font-bold text-3xl mb-2">{selectedCluster.length}</p>
-                                            <p className="text-slate-300 text-sm">Océan: {selectedCluster[0].ocean}</p>
-                                            <div className="border-t border-slate-600 mt-2 pt-2 text-xs">
-                                                Alliance dominante: <span className="font-bold text-amber-400">{selectedCluster[0].alliance_name}</span>
-                                            </div>
+                                        <div className="bg-[#2d3748] p-3 rounded-lg">
+                                            <h3 className="text-white font-bold text-xs uppercase mb-1">Position {selectedCluster[0].x}|{selectedCluster[0].y}</h3>
+                                            <p className="text-amber-400 font-bold text-2xl">{selectedCluster.length} Villes</p>
                                         </div>
-
-                                        <div className="bg-[#2d3748] p-4 rounded-lg flex flex-col h-full max-h-[60vh]">
-                                            <h3 className="text-white font-bold text-base mb-3">Liste des Villes:</h3>
-                                            <div className="overflow-y-auto custom-scrollbar pr-2 space-y-4">
-                                                {Object.entries(clusterByPlayer).map(([playerName, playerCities]) => (
-                                                    <div key={playerName} className="border-b border-slate-600 pb-3 last:border-0">
-                                                        <div className="text-amber-400 font-bold text-sm mb-1">{playerName}</div>
-                                                        <div className="space-y-1.5">
-                                                            {playerCities.map(city => (
-                                                                <div key={city.id} className="text-[11px] leading-tight">
-                                                                    <div className="text-slate-100 truncate font-medium">
-                                                                        {city.name} (Emplacement {city.island_pos}) / ({city.points.toLocaleString('fr-FR')} pts)
-                                                                    </div>
-                                                                    <div className="text-amber-500 font-semibold text-[10px]">
-                                                                        [{city.alliance_name}]
-                                                                    </div>
-                                                                </div>
-                                                            ))}
+                                        <div className="bg-[#2d3748] p-3 rounded-lg space-y-4 overflow-y-auto max-h-[70vh] custom-scrollbar">
+                                            {Object.entries(clusterByPlayer).map(([playerName, playerCities]) => (
+                                                <div key={playerName} className="border-b border-slate-600 pb-2 last:border-0">
+                                                    <div className="text-amber-400 font-bold text-sm">{playerName}</div>
+                                                    {playerCities.map(city => (
+                                                        <div key={city.id} className="text-[11px] mt-1">
+                                                            <div className="text-slate-100 truncate">{city.name} ({city.points} pts)</div>
+                                                            <div className="text-slate-400 text-[10px]">[{city.alliance_name}] - Pos {city.island_pos}</div>
                                                         </div>
-                                                    </div>
-                                                ))}
-                                            </div>
+                                                    ))}
+                                                </div>
+                                            ))}
                                         </div>
                                     </>
                                 ) : (
-                                    <div className="text-center py-20 text-slate-500">
-                                        <p className="text-sm italic">Cliquez sur un point de la carte pour voir les détails de l'île.</p>
-                                    </div>
+                                    <div className="text-center py-20 text-slate-500 text-sm">Cliquez sur une île pour voir l'occupation.</div>
                                 )}
                             </div>
                         </div>
