@@ -173,40 +173,51 @@
             
             const mapRef = useRef(null); 
 
-            // Filtrage des villes sécurisé (gère les cas où player_name est absent ou fantôme)
-            const filteredCities = useMemo(() => {
-                const query = playerSearch.trim().toLowerCase();
-                return cities.filter(city => {
-                    const matchOcean = selectedOcean === 'all' || city.ocean === selectedOcean;
-                    if (!matchOcean) return false;
-                    
-                    if (query === '') return true;
-                    
-                    const pName = city.player_name ? city.player_name.toLowerCase() : '';
-                    return pName.includes(query);
-                });
-            }, [cities, playerSearch, selectedOcean]);
+            // IMPORTANT : On affiche TOUJOURS toutes les villes correspondant à la mer sélectionnée.
+            // On ne filtre plus la liste brute pour cacher des villes pendant la recherche joueur !
+            const displayableCities = useMemo(() => {
+                return cities.filter(city => selectedOcean === 'all' || city.ocean === selectedOcean);
+            }, [cities, selectedOcean]);
 
-            // Calcul dynamique des bordures pour le cadrage automatique
+            // Regroupement par coordonnées pour gérer la superposition
+            const groupedCities = useMemo(() => {
+                const groups = {};
+                displayableCities.forEach(city => {
+                    const key = `${city.x},${city.y}`;
+                    if (!groups[key]) groups[key] = [];
+                    groups[key].push(city);
+                });
+                return groups;
+            }, [displayableCities]);
+
+            // Cadrage de l'écran intelligent (Mer ou Joueur recherché)
             const mapBounds = useMemo(() => {
-                if (filteredCities.length === 0) {
-                    if (selectedOcean !== 'all') {
-                        const oX = parseInt(selectedOcean.charAt(0)) * 100;
-                        const oY = parseInt(selectedOcean.charAt(1)) * 100;
-                        return { minX: oX, maxX: oX + 100, minY: oY, maxY: oY + 100 };
+                // Priorité 1 : Si une mer spécifique est choisie, on cadre ses 100x100 cases
+                if (selectedOcean !== 'all') {
+                    const oX = parseInt(selectedOcean.charAt(0)) * 100;
+                    const oY = parseInt(selectedOcean.charAt(1)) * 100;
+                    return { minX: oX, maxX: oX + 100, minY: oY, maxY: oY + 100 };
+                }
+
+                // Priorité 2 : Si un joueur est recherché, on cadre sur SES villes à lui
+                if (playerSearch.trim() !== '') {
+                    const query = playerSearch.toLowerCase();
+                    const playerCities = cities.filter(c => !c.isGhost && c.player_name.toLowerCase().includes(query));
+                    if (playerCities.length > 0) {
+                        const xs = playerCities.map(c => c.x);
+                        const ys = playerCities.map(c => c.y);
+                        return { 
+                            minX: Math.max(0, Math.min(...xs) - 30), 
+                            maxX: Math.min(1000, Math.max(...xs) + 30), 
+                            minY: Math.max(0, Math.min(...ys) - 30), 
+                            maxY: Math.min(1000, Math.max(...ys) + 30) 
+                        };
                     }
-                    return { minX: 0, maxX: 1000, minY: 0, maxY: 1000 };
                 }
                 
-                const xs = filteredCities.map(c => c.x);
-                const ys = filteredCities.map(c => c.y);
-                return { 
-                    minX: Math.max(0, Math.min(...xs) - 20), 
-                    maxX: Math.min(1000, Math.max(...xs) + 20), 
-                    minY: Math.max(0, Math.min(...ys) - 20), 
-                    maxY: Math.min(1000, Math.max(...ys) + 20) 
-                };
-            }, [filteredCities, selectedOcean]);
+                // Par défaut : toute la carte
+                return { minX: 0, maxX: 1000, minY: 0, maxY: 1000 };
+            }, [cities, playerSearch, selectedOcean]);
 
             const zoomToOccupiedAreas = useCallback((bounds = mapBounds) => {
                 if (cities.length === 0 || !mapRef.current) return;
@@ -221,7 +232,10 @@
 
                 const scaleX = mapWidth / width; 
                 const scaleY = mapHeight / height; 
-                const scale = Math.min(scaleX, scaleY, 12); 
+                
+                // Zoom adapté selon qu'on regarde une mer (zoom fort) ou tout le serveur
+                const maxZoom = selectedOcean !== 'all' ? 6 : 12;
+                const scale = Math.min(scaleX, scaleY, maxZoom); 
 
                 const centerX = (bounds.minX + bounds.maxX) / 2;
                 const centerY = (bounds.minY + bounds.maxY) / 2;
@@ -231,21 +245,22 @@
                     y: (mapHeight / 2) - centerY * scale,
                     scale: scale
                 });
-            }, [cities.length, mapBounds]);
+            }, [cities.length, mapBounds, selectedOcean]);
 
+            // Correction du Zoom Molette souris
             const handleWheel = useCallback((e) => {
                 e.preventDefault(); 
                 const scaleFactor = e.deltaY > 0 ? 0.9 : 1.1;
-                const mapRect = mapRef.current.getBoundingClientRect();
-                const mouseX = e.clientX - mapRect.left;
-                const mouseY = e.clientY - mapRect.top;
+                const mapContainer = mapRef.current.closest('.map-wrapper');
+                const rect = mapContainer.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
                 
                 setTransform(prev => {
-                    const newScale = Math.max(0.1, Math.min(15, prev.scale * scaleFactor));
-                    if (newScale === prev.scale) return prev;
+                    const newScale = Math.max(0.3, Math.min(25, prev.scale * scaleFactor));
                     return {
-                        x: mouseX - (mouseX - prev.x) * scaleFactor,
-                        y: mouseY - (mouseY - prev.y) * scaleFactor,
+                        x: mouseX - (mouseX - prev.x) * (newScale / prev.scale),
+                        y: mouseY - (mouseY - prev.y) * (newScale / prev.scale),
                         scale: newScale
                     };
                 });
@@ -257,7 +272,7 @@
                     mapElement.addEventListener('wheel', handleWheel, { passive: false });
                     return () => mapElement.removeEventListener('wheel', handleWheel);
                 }
-            }, [handleWheel]); 
+            }, [handleWheel, loading]); 
 
             useEffect(() => {
                 const loadData = async () => {
@@ -274,21 +289,12 @@
                 loadData();
             }, []);
             
+            // Recadrage automatique lors des changements de filtres
             useEffect(() => {
                 if (!loading && cities.length > 0) {
                     zoomToOccupiedAreas(mapBounds);
                 }
             }, [playerSearch, selectedOcean, loading]);
-
-            const groupedCities = useMemo(() => {
-                const groups = {};
-                filteredCities.forEach(city => {
-                    const key = `${city.x},${city.y}`;
-                    if (!groups[key]) groups[key] = [];
-                    groups[key].push(city);
-                });
-                return groups;
-            }, [filteredCities]);
 
             const oceans = useMemo(() => {
                 const list = [];
@@ -298,6 +304,7 @@
                 return list;
             }, []);
 
+            // Drag and Drop (Déplacement)
             const handleMouseDown = useCallback((e) => {
                 if (e.button === 2) return;
                 setIsDragging(true);
@@ -315,9 +322,9 @@
                 return Math.sqrt(Math.pow(touches[0].clientX - touches[1].clientX, 2) + Math.pow(touches[0].clientY - touches[1].clientY, 2));
             };
 
+            // Tactile Mobile
             const handleTouchStart = useCallback((e) => {
                 if (e.touches.length === 2) {
-                    e.preventDefault(); 
                     setInitialPinchDistance(getTouchDistance(e.touches));
                     setInitialScale(transform.scale);
                     setIsDragging(false);
@@ -333,7 +340,7 @@
                     e.preventDefault();
                     const currentDistance = getTouchDistance(e.touches);
                     const scaleFactor = currentDistance / initialPinchDistance;
-                    let newScale = Math.max(0.1, Math.min(15, initialScale * scaleFactor));
+                    let newScale = Math.max(0.3, Math.min(25, initialScale * scaleFactor));
                     const touchCenterX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
                     const touchCenterY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
 
@@ -388,12 +395,12 @@
                                     fill={isSelected ? '#1e293b' : (isEven ? '#1e3a5f' : '#2d4a6f')} 
                                     stroke={isSelected ? '#f59e0b' : '#0f172a'} 
                                     strokeWidth={isSelected ? '2' : '0.5'} 
-                                    opacity={selectedOcean === 'all' || isSelected ? 1 : 0.15}
+                                    opacity={selectedOcean === 'all' || isSelected ? 1 : 0.1}
                                 />
                                 <text 
                                     x={x * 100 + 50} y={y * 100 + 50} textAnchor="middle" dy="0.35em" 
                                     fill={isSelected ? '#f59e0b' : '#64748b'} fontSize="11" fontWeight="bold"
-                                    opacity={selectedOcean === 'all' || isSelected ? 0.8 : 0.1}
+                                    opacity={selectedOcean === 'all' || isSelected ? 0.8 : 0.05}
                                 >
                                     {oceanNum}
                                 </text>
@@ -416,6 +423,7 @@
                 );
             }, [citiesForDistance, transform.scale]);
 
+            // Rendu graphique dynamique des ronds de villes
             const renderCities = useMemo(() => {
                 const queryActive = playerSearch.trim() !== '';
                 const query = playerSearch.toLowerCase();
@@ -423,32 +431,38 @@
                 return Object.entries(groupedCities).map(([key, list]) => {
                     const [x, y] = key.split(',').map(Number);
                     
+                    // On vérifie si le joueur recherché possède une ville sur cette coordonnée
                     const hasTargetPlayer = list.some(c => !c.isGhost && queryActive && c.player_name.toLowerCase().includes(query));
                     const allAreGhosts = list.every(c => c.isGhost);
 
-                    let cityColor = '#475569'; 
-                    let radius = Math.max(1.2, 3.8 / transform.scale);
-                    let opacity = 0.25;
+                    let cityColor = '#334155'; // Gris très pâle par défaut pour l'arrière-plan
+                    let radius = Math.max(1.0, 3.2 / transform.scale);
+                    let opacity = 0.15; // Reste très discret si c'est un autre joueur
 
                     if (hasTargetPlayer) {
-                        cityColor = '#22c55e'; 
-                        radius = Math.max(1.8, 5.5 / transform.scale); 
+                        cityColor = '#22c55e'; // VERT FLUO pour votre cible / vous-même
+                        radius = Math.max(2.0, 6.0 / transform.scale); // Plus gros pour sauter aux yeux
                         opacity = 1;
                     } else if (allAreGhosts) {
-                        cityColor = '#fef08a'; 
-                        opacity = 0.85;
+                        cityColor = '#fef08a'; // JAUNE PÂLE pour les fantômes (toujours visibles !)
+                        radius = Math.max(1.3, 4.0 / transform.scale);
+                        opacity = 0.90;
                     }
 
                     const payload = list.length > 1 ? list : list[0];
                     const isHovered = hoveredCity && ((Array.isArray(hoveredCity) && hoveredCity[0].x === x && hoveredCity[0].y === y) || (!Array.isArray(hoveredCity) && hoveredCity.x === x && hoveredCity.y === y));
                     const isSelected = selectedCity && ((Array.isArray(selectedCity) && selectedCity[0].x === x && selectedCity[0].y === y) || (!Array.isArray(selectedCity) && selectedCity.x === x && selectedCity.y === y));
 
+                    if (isSelected || isHovered) {
+                        radius = radius * 1.3;
+                    }
+
                     return (
                         <g key={key}>
                             <circle 
                                 cx={x} cy={y} r={radius} fill={cityColor} 
                                 stroke={isSelected || isHovered ? '#ffffff' : 'none'} 
-                                strokeWidth={isSelected || isHovered ? 1.5 : 0}
+                                strokeWidth={isSelected || isHovered ? Math.max(0.5, 1.5 / transform.scale) : 0}
                                 opacity={isHovered || isSelected ? 1 : opacity}
                                 onMouseEnter={() => setHoveredCity(payload)}
                                 onMouseLeave={() => setHoveredCity(null)}
@@ -456,12 +470,12 @@
                                 onTouchEnd={(e) => handleCityClick(e, payload)} 
                                 style={{ cursor: 'pointer' }}
                             />
-                            {(isHovered || isSelected) && !distanceMode && transform.scale > 0.4 && (
+                            {(isHovered || isSelected) && !distanceMode && transform.scale > 1.5 && (
                                 <g style={{ pointerEvents: 'none' }}>
-                                    <text x={x} y={y - 8 - (8 / transform.scale)} textAnchor="middle" fill="#fbbf24" fontSize={Math.max(5, 11 / transform.scale)} fontWeight="bold" style={{ textShadow: '0 0 3px #0f172a' }}>
+                                    <text x={x} y={y - 5 - (5 / transform.scale)} textAnchor="middle" fill="#fbbf24" fontSize={Math.max(3, 9 / transform.scale)} fontWeight="bold" style={{ textShadow: '0 0 3px #0f172a' }}>
                                         {list[0].name} {list.length > 1 ? `(+${list.length - 1})` : ''}
                                     </text>
-                                    <text x={x} y={y - 3 - (4 / transform.scale)} textAnchor="middle" fill="#e2e8f0" fontSize={Math.max(4, 9 / transform.scale)} style={{ textShadow: '0 0 3px #0f172a' }}>
+                                    <text x={x} y={y - 1 - (2 / transform.scale)} textAnchor="middle" fill="#e2e8f0" fontSize={Math.max(2.5, 7.5 / transform.scale)} style={{ textShadow: '0 0 3px #0f172a' }}>
                                         {list[0].player_name} ({x},{y})
                                     </text>
                                 </g>
@@ -476,7 +490,7 @@
                     <div className="w-full h-screen bg-slate-900 flex items-center justify-center text-white font-semibold">
                         <div className="text-center">
                             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-500 mx-auto mb-4"></div>
-                            Chargement des données de la carte...
+                            Analyse du serveur fr39 et extraction des fantômes...
                         </div>
                     </div>
                 );
@@ -503,7 +517,7 @@
                         <div className="flex flex-wrap items-center gap-3">
                             <div className="relative w-full sm:w-auto">
                                 <input 
-                                    type="text" placeholder="👤 Filtrer par joueur (ex: Fantôme)..."
+                                    type="text" placeholder="👤 Mon Pseudo / Joueur (Vert Fluo)..."
                                     value={playerSearch} onChange={(e) => setPlayerSearch(e.target.value)}
                                     className="pl-4 pr-4 py-2 bg-slate-700 text-white rounded-lg w-full sm:w-64 border border-slate-600 focus:outline-none focus:border-green-400"
                                 />
@@ -518,7 +532,7 @@
                             </select>
 
                             <div className="flex gap-2 w-full sm:w-auto">
-                                <button onClick={() => zoomToOccupiedAreas(mapBounds)} className="flex-1 sm:flex-none px-4 py-2 bg-amber-500 text-white rounded-lg font-semibold hover:bg-amber-600 transition-colors">🎯 Centrer la vue</button>
+                                <button onClick={() => zoomToOccupiedAreas(mapBounds)} className="flex-1 sm:flex-none px-4 py-2 bg-amber-500 text-white rounded-lg font-semibold hover:bg-amber-600 transition-colors">🎯 Centrer / Reset Zoom</button>
                                 <button onClick={() => setDistanceMode(!distanceMode)} className={`px-3 py-2 rounded-lg transition-colors ${distanceMode ? 'bg-green-600 text-white' : 'bg-slate-600 text-slate-300'}`}>📏 Règle</button>
                             </div>
                         </div>
@@ -548,15 +562,15 @@
                             <div className="bg-slate-900 p-3 rounded-lg mb-4 space-y-2 text-xs">
                                 <div className="flex items-center gap-2">
                                     <span className="w-3 h-3 rounded-full bg-yellow-200 inline-block"></span>
-                                    <span className="text-yellow-200 font-semibold">Villes Fantômes (player_id = 0)</span>
+                                    <span className="text-yellow-200 font-semibold">Villes Fantômes (Disponibles)</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <span className="w-3 h-3 rounded-full bg-green-500 inline-block"></span>
-                                    <span className="text-green-400 font-semibold">Correspondances recherche</span>
+                                    <span className="text-green-400 font-semibold">Le Joueur recherché (Vert)</span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <span className="w-3 h-3 rounded-full bg-slate-600 inline-block"></span>
-                                    <span className="text-slate-400">Autres villes actives</span>
+                                    <span className="w-3 h-3 rounded-full bg-slate-700 inline-block"></span>
+                                    <span className="text-slate-500">Autres joueurs actifs</span>
                                 </div>
                             </div>
 
@@ -591,7 +605,7 @@
                                     )}
                                 </div>
                             ) : (
-                                <p className="text-sm text-slate-400 italic">Cliquez sur une ville ou un regroupement pour analyser sa position.</p>
+                                <p className="text-sm text-slate-400 italic">Cliquez sur une ville ou un regroupement jaune pour planifier vos calos.</p>
                             )}
 
                             {lastUpdate && (
