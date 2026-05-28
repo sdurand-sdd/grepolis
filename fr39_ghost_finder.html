@@ -65,14 +65,12 @@
         };
 
         const fetchData = async () => {
-            const BASE_URL = ''; 
-
             try {
                 const [alliancesRes, playersRes, townsRes, updateRes] = await Promise.all([
-                    fetch(`${BASE_URL}alliances.txt`),
-                    fetch(`${BASE_URL}players.txt`),
-                    fetch(`${BASE_URL}towns.txt`),
-                    fetch(`${BASE_URL}last_update.txt`),
+                    fetch('alliances.txt'),
+                    fetch('players.txt'),
+                    fetch('towns.txt'),
+                    fetch('last_update.txt'),
                 ]);
 
                 if (!alliancesRes.ok || !playersRes.ok || !townsRes.ok) {
@@ -103,7 +101,6 @@
                     alliance_members: allianceMap.get(p.alliance_id)?.members || 0
                 }]));
 
-                // Fusion avec conservation des villes fantômes (player_id === 0)
                 const mergedCities = towns.map(town => {
                     if (town.points === 0) return null;
 
@@ -176,18 +173,15 @@
             
             const mapRef = useRef(null); 
 
-            // Bornes dynamiques pour le recentrage automatique (par océan ou par cible)
             const mapBounds = useMemo(() => {
                 let targetCities = cities;
 
-                // Si un océan spécifique est choisi, on restreint les bornes à cet océan
                 if (selectedOcean !== 'all') {
                     const oX = parseInt(selectedOcean.charAt(0)) * 100;
                     const oY = parseInt(selectedOcean.charAt(1)) * 100;
                     return { minX: oX, maxX: oX + 100, minY: oY, maxY: oY + 100 };
                 }
 
-                // Sinon, si un joueur est recherché, on se cadre sur ses villes
                 if (playerSearch.trim() !== '') {
                     targetCities = cities.filter(c => !c.isGhost && c.player_name.toLowerCase().includes(playerSearch.toLowerCase()));
                 }
@@ -217,7 +211,6 @@
 
                 const scaleX = mapWidth / width; 
                 const scaleY = mapHeight / height; 
-                // Zoom légèrement plus puissant pour le mode recherche de mer
                 const scale = Math.min(scaleX, scaleY, 12); 
 
                 const centerX = (bounds.minX + bounds.maxX) / 2;
@@ -264,7 +257,9 @@
                         setLastUpdate(lastUpdate);
                     } catch (err) {
                         setDataError(err.message);
-                    } blocks { setLoading(false); }
+                    } finally { 
+                        setLoading(false); 
+                    }
                 };
                 loadData();
             }, []);
@@ -275,7 +270,6 @@
                 }
             }, [playerSearch, selectedOcean, loading, cities.length]);
 
-            // Filtrage : On n'affiche que l'océan sélectionné si un filtre Mer est actif
             const filteredCities = useMemo(() => {
                 return cities.filter(city => selectedOcean === 'all' || city.ocean === selectedOcean);
             }, [cities, selectedOcean]);
@@ -290,7 +284,6 @@
                 return groups;
             }, [filteredCities]);
 
-            // Génération de la liste complète des 99 mers présentes
             const oceans = useMemo(() => {
                 const list = [];
                 for(let i=0; i<100; i++) {
@@ -326,7 +319,6 @@
                     setIsDragging(true);
                     setInitialPinchDistance(null);
                     setDragStart({ x: e.touches[0].clientX - transform.x, y: e.touches[0].clientY - transform.y });
-                    e.preventDefault(); 
                 }
             }, [transform]);
 
@@ -346,7 +338,6 @@
                     }));
                 } else if (e.touches.length === 1 && isDragging) {
                     setTransform(prev => ({ ...prev, x: e.touches[0].clientX - dragStart.x, y: e.touches[0].clientY - dragStart.y }));
-                    e.preventDefault();
                 }
             }, [isDragging, dragStart, initialPinchDistance, initialScale]);
 
@@ -423,174 +414,22 @@
                 return Object.entries(groupedCities).map(([key, list]) => {
                     const [x, y] = key.split(',').map(Number);
                     
-                    // Vérification de la correspondance avec la recherche joueur
                     const hasTargetPlayer = list.some(c => !c.isGhost && playerSearch.trim() !== '' && c.player_name.toLowerCase().includes(playerSearch.toLowerCase()));
                     const allAreGhosts = list.every(c => c.isGhost);
 
-                    // 1. Vert fluo pour vos villes / villes recherchées
-                    // 2. Jaune pâle pour les villes fantômes
-                    // 3. Opacité réduite pour le reste pour faire ressortir vos cibles
                     let cityColor = '#475569'; 
                     let radius = Math.max(1.2, 3.8 / transform.scale);
                     let opacity = 0.25;
 
                     if (hasTargetPlayer) {
-                        cityColor = '#22c55e'; // Vert Fluo vif
-                        radius = Math.max(1.8, 5.5 / transform.scale); // Légèrement plus gros pour être très visible
+                        cityColor = '#22c55e'; 
+                        radius = Math.max(1.8, 5.5 / transform.scale); 
                         opacity = 1;
                     } else if (allAreGhosts) {
-                        cityColor = '#fef08a'; // Jaune pâle
+                        cityColor = '#fef08a'; 
                         opacity = 0.85;
                     }
 
                     const payload = list.length > 1 ? list : list[0];
                     const isHovered = hoveredCity && ((Array.isArray(hoveredCity) && hoveredCity[0].x === x && hoveredCity[0].y === y) || (!Array.isArray(hoveredCity) && hoveredCity.x === x && hoveredCity.y === y));
-                    const isSelected = selectedCity && ((Array.isArray(selectedCity) && selectedCity[0].x === x && selectedCity[0].y === y) || (!Array.isArray(selectedCity) && selectedCity.x === x && selectedCity.y === y));
-
-                    return (
-                        <g key={key}>
-                            <circle 
-                                cx={x} cy={y} r={radius} fill={cityColor} 
-                                stroke={isSelected || isHovered ? '#ffffff' : 'none'} 
-                                strokeWidth={isSelected || isHovered ? 1.5 : 0}
-                                opacity={isHovered || isSelected ? 1 : opacity}
-                                onMouseEnter={() => setHoveredCity(payload)}
-                                onMouseLeave={() => setHoveredCity(null)}
-                                onClick={(e) => handleCityClick(e, payload)}
-                                onTouchEnd={(e) => handleCityClick(e, payload)} 
-                                style={{ cursor: 'pointer' }}
-                            />
-                            {(isHovered || isSelected) && !distanceMode && transform.scale > 0.4 && (
-                                <g style={{ pointerEvents: 'none' }}>
-                                    <text x={x} y={y - 8 - (8 / transform.scale)} textAnchor="middle" fill="#fbbf24" fontSize={Math.max(5, 11 / transform.scale)} fontWeight="bold" style={{ textShadow: '0 0 3px #0f172a' }}>
-                                        {list[0].name} {list.length > 1 ? `(+${list.length - 1})` : ''}
-                                    </text>
-                                    <text x={x} y={y - 3 - (4 / transform.scale)} textAnchor="middle" fill="#e2e8f0" fontSize={Math.max(4, 9 / transform.scale)} style={{ textShadow: '0 0 3px #0f172a' }}>
-                                        {list[0].player_name} ({x},{y})
-                                    </text>
-                                </g>
-                            )}
-                        </g>
-                    );
-                });
-            }, [groupedCities, hoveredCity, selectedCity, playerSearch, distanceMode, transform.scale, handleCityClick]);
-
-            return (
-                <div className="w-full h-screen bg-slate-900 flex flex-col">
-                    {/* EN-TÊTE AVEC FILTRES */}
-                    <div className="bg-slate-800 p-4 shadow-lg sticky top-0 z-10">
-                        <h1 className="text-xl font-bold text-amber-400 mb-3 flex items-center gap-2">
-                            💀 Grepolis Ghost Finder (FR39)
-                        </h1>
-                        <div className="flex flex-wrap items-center gap-3">
-                            {/* Choix du joueur ciblé */}
-                            <div className="relative w-full sm:w-auto">
-                                <input 
-                                    type="text" placeholder="👤 Mon Pseudo / Joueur (Vert Fluo)..."
-                                    value={playerSearch} onChange={(e) => setPlayerSearch(e.target.value)}
-                                    className="pl-4 pr-4 py-2 bg-slate-700 text-white rounded-lg w-full sm:w-64 border border-slate-600 focus:outline-none focus:border-green-400"
-                                />
-                            </div>
-                            
-                            {/* Centrer sur une Mer / Océan */}
-                            <select
-                                value={selectedOcean} onChange={(e) => setSelectedOcean(e.target.value)}
-                                className="bg-slate-700 text-white py-2 px-3 rounded-lg border border-slate-600 focus:outline-none focus:border-amber-400 w-full sm:w-48"
-                            >
-                                <option value="all">Toutes les mers (00-99)</option>
-                                {oceans.map(o => <option key={o} value={o}>Mer {o}</option>)}
-                            </select>
-
-                            <div className="flex gap-2 w-full sm:w-auto">
-                                <button onClick={() => zoomToOccupiedAreas(mapBounds)} className="flex-1 sm:flex-none px-4 py-2 bg-amber-500 text-white rounded-lg font-semibold hover:bg-amber-600 transition-colors">🎯 Centrer / Zoom Vue</button>
-                                <button onClick={() => setDistanceMode(!distanceMode)} className={`px-3 py-2 rounded-lg transition-colors ${distanceMode ? 'bg-green-600 text-white' : 'bg-slate-600 text-slate-300'}`}>📏 Règle</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* GRILLE ET SPLIT SIDEBAR */}
-                    <div className="flex flex-1 overflow-hidden md:flex-row flex-col">
-                        <div className="flex-1 relative overflow-hidden map-wrapper">
-                            <svg 
-                                ref={mapRef} viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid meet" className="w-full h-full map-container"
-                                style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, transformOrigin: 'top left' }}
-                                onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
-                                onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleMouseUp}
-							>
-                                <g>
-                                    {renderOceanSquares()}
-                                    {renderDistanceLines()}
-                                    {renderCities}
-                                </g>
-                            </svg>
-                        </div>
-
-                        {/* SIDEBAR DÉTAILS */}
-                        <div className="w-full sm:w-80 p-4 bg-slate-800 text-slate-300 flex-shrink-0 overflow-y-auto sidebar border-l border-slate-700">
-                            <h2 className="text-lg font-bold text-white mb-3">Informations Cible</h2>
-                            
-                            {/* LEGENDE FIXE */}
-                            <div className="bg-slate-900 p-3 rounded-lg mb-4 space-y-2 text-xs">
-                                <div className="flex items-center gap-2">
-                                    <span className="w-3 h-3 rounded-full bg-yellow-200 inline-block"></span>
-                                    <span className="text-yellow-200 font-semibold">Villes Fantômes (Sans propriétaire)</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <span className="w-3 h-3 rounded-full bg-green-500 inline-block"></span>
-                                    <span className="text-green-400 font-semibold">Villes du joueur recherché</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <span className="w-3 h-3 rounded-full bg-slate-600 inline-block"></span>
-                                    <span className="text-slate-400">Autres villes du serveur</span>
-                                </div>
-                            </div>
-
-                            {selectedCity ? (
-                                <div className="bg-slate-700 p-3 rounded-lg space-y-2 text-sm">
-                                    <h3 className="font-bold text-amber-300 border-b border-slate-600 pb-1">
-                                        {Array.isArray(selectedCity) ? `Cluster de ${selectedCity.length} villes` : selectedCity.name}
-                                    </h3>
-                                    {Array.isArray(selectedCity) ? (
-                                        <div className="space-y-2 max-h-60 overflow-y-auto">
-                                            {selectedCity.map((c, i) => (
-                                                <div key={i} className="border-b border-slate-600 pb-1 last:border-0">
-                                                    <div className="font-semibold text-white">{c.name} ({c.points} pts)</div>
-                                                    <div className={`${c.isGhost ? 'text-yellow-300' : 'text-green-300'}`}>{c.player_name}</div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-1">
-                                            <div>📍 Coordonnées : <strong>{selectedCity.x}, {selectedCity.y}</strong> (Mer {selectedCity.ocean})</div>
-                                            <div>📊 Points : {selectedCity.points.toLocaleString('fr-FR')}</div>
-                                            <div className="pt-1 mt-2 border-t border-slate-600">
-                                                Propriétaire : <span className={`font-bold ${selectedCity.isGhost ? 'text-yellow-300' : 'text-green-400'}`}>{selectedCity.player_name}</span>
-                                            </div>
-                                            {!selectedCity.isGhost && (
-                                                <>
-                                                    <div>Alliance : {selectedCity.alliance_name}</div>
-                                                    <div>Points Joueur : {selectedCity.player_points?.toLocaleString('fr-FR')}</div>
-                                                </>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            ) : (
-                                <p className="text-sm text-slate-400 italic">Cliquez sur une ville ou un regroupement pour analyser sa position et planifier vos calos.</p>
-                            )}
-
-                            {lastUpdate && (
-                                <div className="mt-6 text-[11px] text-slate-500 text-right">
-                                    Données serveur : {lastUpdate}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
-        ReactDOM.render(<GrepolisGhostFinder />, document.getElementById('root'));
-    </script>
-</body>
-</html>
+                    const isSelected = selectedCity && ((Array.isArray(selected
