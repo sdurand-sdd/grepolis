@@ -189,32 +189,39 @@
                 return groups;
             }, [displayableCities]);
 
+            // Correction stricte du calcul des limites géographiques
             const mapBounds = useMemo(() => {
+                const atkQuery = attackerSearch.trim().toLowerCase();
+                const defQuery = defenderSearch.trim().toLowerCase();
+                
+                // Si une recherche textuelle est active, on PRIORITISE le ciblage du ou des joueurs
+                if (atkQuery !== '' || defQuery !== '') {
+                    const targets = cities.filter(c => !c.isGhost && (
+                        (atkQuery !== '' && c.player_name.toLowerCase().includes(atkQuery)) ||
+                        (defQuery !== '' && c.player_name.toLowerCase().includes(defQuery))
+                    ));
+
+                    if (targets.length > 0) {
+                        const xs = targets.map(c => c.x);
+                        const ys = targets.map(c => c.y);
+                        // On applique une marge dynamique de 35 points autour de leurs villes
+                        return { 
+                            minX: Math.max(0, Math.min(...xs) - 35), 
+                            maxX: Math.min(1000, Math.max(...xs) + 35), 
+                            minY: Math.max(0, Math.min(...ys) - 35), 
+                            maxY: Math.min(1000, Math.max(...ys) + 35) 
+                        };
+                    }
+                }
+
+                // Si aucune recherche mais qu'une mer spécifique est cochée
                 if (selectedOcean !== 'all') {
                     const oX = parseInt(selectedOcean.charAt(0)) * 100;
                     const oY = parseInt(selectedOcean.charAt(1)) * 100;
                     return { minX: oX, maxX: oX + 100, minY: oY, maxY: oY + 100 };
                 }
-
-                const atkQuery = attackerSearch.trim().toLowerCase();
-                const defQuery = defenderSearch.trim().toLowerCase();
                 
-                const targets = cities.filter(c => !c.isGhost && (
-                    (atkQuery !== '' && c.player_name.toLowerCase().includes(atkQuery)) ||
-                    (defQuery !== '' && c.player_name.toLowerCase().includes(defQuery))
-                ));
-
-                if (targets.length > 0) {
-                    const xs = targets.map(c => c.x);
-                    const ys = targets.map(c => c.y);
-                    return { 
-                        minX: Math.max(0, Math.min(...xs) - 25), 
-                        maxX: Math.min(1000, Math.max(...xs) + 25), 
-                        minY: Math.max(0, Math.min(...ys) - 25), 
-                        maxY: Math.min(1000, Math.max(...ys) + 25) 
-                    };
-                }
-                
+                // Par défaut (vide) : Vue globale complète de la carte du monde
                 return { minX: 0, maxX: 1000, minY: 0, maxY: 1000 };
             }, [cities, attackerSearch, defenderSearch, selectedOcean]);
 
@@ -232,7 +239,8 @@
                 const scaleX = mapWidth / width; 
                 const scaleY = mapHeight / height; 
                 
-                const maxZoom = selectedOcean !== 'all' ? 6 : 12;
+                // Ajustement du niveau maximum de zoom automatique pour éviter l'effet "pixelisé"
+                const maxZoom = (attackerSearch.trim() !== '' || defenderSearch.trim() !== '') ? 16 : (selectedOcean !== 'all' ? 6 : 12);
                 const scale = Math.min(scaleX, scaleY, maxZoom); 
 
                 const centerX = (bounds.minX + bounds.maxX) / 2;
@@ -241,9 +249,9 @@
                 setTransform({
                     x: (mapWidth / 2) - centerX * scale,
                     y: (mapHeight / 2) - centerY * scale,
-                    scale: scale
+                    scale: Math.max(0.3, scale)
                 });
-            }, [cities.length, mapBounds, selectedOcean]);
+            }, [cities.length, attackerSearch, defenderSearch, selectedOcean]);
 
             const handleWheel = useCallback((e) => {
                 e.preventDefault(); 
@@ -286,6 +294,7 @@
                 loadData();
             }, []);
             
+            // Écouteur de modifications sur les entrées utilisateurs pour recadrer instantanément
             useEffect(() => {
                 if (!loading && cities.length > 0) {
                     zoomToOccupiedAreas(mapBounds);
@@ -431,25 +440,24 @@
                     const hasDefender = list.some(c => !c.isGhost && defActive && c.player_name.toLowerCase().includes(defQuery));
                     const hasGhost = list.some(c => c.isGhost);
 
-                    let cityColor = '#334155'; // Gris par défaut
+                    let cityColor = '#334155'; 
                     let radius = Math.max(1.0, 3.2 / transform.scale);
                     let opacity = 0.15;
 
-                    // LOGIQUE DE COULEURS : PRIORITÉ AU CLUSTER DE COHABITATION (CONFLIT)
                     if (hasAttacker && hasDefender) {
-                        cityColor = '#d946ef'; // MAGENTA / VIOLET FLUO (Attaquant + Défenseur présents sur la même île)
-                        radius = Math.max(2.5, 7.5 / transform.scale); // Légèrement plus gros pour attirer l'oeil
+                        cityColor = '#d946ef'; 
+                        radius = Math.max(2.5, 7.5 / transform.scale); 
                         opacity = 1;
                     } else if (hasAttacker) {
-                        cityColor = '#06b6d4'; // CYAN FLUO
+                        cityColor = '#06b6d4'; 
                         radius = Math.max(2.0, 6.0 / transform.scale);
                         opacity = 1;
                     } else if (hasDefender) {
-                        cityColor = '#ef4444'; // ROUGE VIF
+                        cityColor = '#ef4444'; 
                         radius = Math.max(2.0, 6.0 / transform.scale);
                         opacity = 1;
                     } else if (hasGhost) {
-                        cityColor = '#fef08a'; // JAUNE PÂLE
+                        cityColor = '#fef08a'; 
                         radius = Math.max(1.4, 4.5 / transform.scale);
                         opacity = 0.95;
                     }
