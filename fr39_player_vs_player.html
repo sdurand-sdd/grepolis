@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grepolis - Tactical Duel Map</title>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; }
+        .map-container { cursor: grab; touch-action: none; }
+        .map-container:active { cursor: grabbing; }
+        .distance-line { stroke-dasharray: 5,5; animation: dash 1s linear infinite; }
+        @keyframes dash { to { stroke-dashoffset: -10; } }
+        .map-wrapper { height: 100%; min-height: 35vh; }
+        @media (max-width: 767px) { 
+            .sidebar { max-height: 55vh; width: 100%; }
+            .main-content { overflow-y: auto; display: flex; flex-direction: column; }
+            .map-wrapper { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div id="root" class="main-content h-screen"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo, useCallback, useEffect, useRef } = React;
+
+        const calculateDistance = (x1, y1, x2, y2) => {
+            return Math.sqrt(Math.pow(x1 - x2, 2) + Math.pow(y1 - y2, 2)).toFixed(2);
+        };
+
+        const getGrepolisOcean = (x, y) => {
+            const oceanX = Math.floor(x / 100).toString(); 
+            const oceanY = Math.floor(y / 100).toString();
+            return oceanX.padStart(1, '0') + oceanY.padStart(1, '0'); 
+        };
+        
+        const decodeName = (str) => {
+            if (!str) return str;
+            try {
+                return decodeURIComponent(str.trim().replace(/\+/g, ' '));
+            } catch (e) {
+                return str.trim().replace(/\+/g, ' ');
+            }
+        };
+
+        const parseData = (text, headers) => {
+            const lines = text.trim().split('\n').filter(line => line.trim() !== '' && !line.startsWith('#'));
+            if (lines.length === 0) return [];
+            
+            return lines.map(line => {
+                const values = line.split(','); 
+                const obj = {};
+                headers.forEach((header, i) => {
+                    const value = values[i];
+                    const isNumeric = (header.endsWith('_id') || ['id', 'x', 'y', 'points', 'island_pos', 'towns', 'members', 'rank', 'off_rank', 'off_points', 'def_rank', 'def_points'].includes(header));
+                    obj[header] = isNumeric ? (Number(value) || 0) : decodeName(value);
+                });
+                if (Object.keys(obj).length !== headers.length) return null;
+                return obj;
+            }).filter(obj => obj !== null);
+        };
+
+        const fetchData = async () => {
+            try {
+                const [alliancesRes, playersRes, townsRes, updateRes] = await Promise.all([
+                    fetch('alliances.txt'),
+                    fetch('players.txt'),
+                    fetch('towns.txt'),
+                    fetch('last_update.txt'),
+                ]);
+
+                if (!alliancesRes.ok || !playersRes.ok || !townsRes.ok) {
+                    throw new Error("Erreur de chargement des fichiers serveurs.");
+                }
+
+                const [alliancesText, playersText, townsText, updateText] = await Promise.all([
+                    alliancesRes.text(),
+                    playersRes.text(),
+                    townsRes.text(),
+                    updateRes.ok ? updateRes.text() : 'Date inconnue',
+                ]);
+
+                const alliancesHeaders = ['id', 'name', 'points', 'towns', 'members'];
+                const playersHeaders = ['id', 'name', 'alliance_id', 'points', 'rank', 'towns', 'off_rank', 'off_points', 'def_rank', 'def_points'];
+                const townsHeaders = ['id', 'player_id', 'name', 'x', 'y', 'island_pos', 'points']; 
+
+                const alliances = parseData(alliancesText, alliancesHeaders);
+                const players = parseData(playersText, playersHeaders);
+                const towns = parseData(townsText, townsHeaders);
+                
+                const lastUpdate = updateText.trim().split('\n')[0];
+
+                const allianceMap = new Map(alliances.map(a => [a.id, a]));
+                const playerMap = new Map(players.map(p => [p.id, {
+                    ...p,
+                    alliance_name: allianceMap.get(p.alliance_id)?.name || 'Sans alliance',
+                    alliance_members: allianceMap.get(p.alliance_id)?.members || 0
+                }]));
+
+                const mergedCities = towns.map(town => {
+                    if (town.points === 0) return null;
+
+                    if (town.player_id === 0) {
+                        return {
+                            ...town,
+                            ocean: getGrepolisOcean(town.x, town.y),
+                            player_name: 'Ville Fantôme',
+                            isGhost: true,
+                            alliance_name: 'Aucune',
+                            player_points: 0
+                        };
+                    }
+
+                    const player = playerMap.get(town.player_id);
+                    if (!player) {
+                        return {
+                            ...town,
+                            ocean: getGrepolisOcean(town.x, town.y),
+                            player_name: 'Joueur inconnu',
+                            isGhost: true,
+                            alliance_name: 'Aucune',
+                            player_points: 0
+                        };
+                    }
+
+                    return {
+                        ...town,
+                        ocean: getGrepolisOcean(town.x, town.y), 
+                        player_name: player.name,
+                        player_id: player.id,
+                        player_points: player.points,
+                        player_towns_count: player.towns,
+                        alliance_id: player.alliance_id,
+                        alliance_name: player.alliance_name,
+                        alliance_members: player.alliance_members,
+                        player_off_points: player.off_points,
+                        player_def_points: player.def_points,
+                        isGhost: false
+                    };
+                }).filter(c => c !== null);
+
+                return { mergedCities, alliances, lastUpdate };
+
+            } catch (error) {
+                console.error(error);
+                throw new Error("Erreur lors de la récupération des fichiers.");
+            }
+        };
+
+        // --- COMPOSANT PRINCIPAL ---
+
+        const GrepolisTacticalMap = () => {
+            const [cities, setCities] = useState([]);
+            const [lastUpdate, setLastUpdate] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
+            const [isDragging, setIsDragging] = useState(false);
+            const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+            const [initialPinchDistance, setInitialPinchDistance] = useState(null); 
+            const [initialScale, setInitialScale] = useState(1);
+            
+            // CONFIGURATION JOUEUR VS JOUEUR
+            const [attackerSearch, setAttackerSearch] = useState(''); 
+            const [defenderSearch, setDefenderSearch] = useState(''); 
+            
+            const [selectedOcean, setSelectedOcean] = useState('all');
+            const [hoveredCity, setHoveredCity] = useState(null);
+            const [selectedCity, setSelectedCity] = useState(null);
+            const [distanceMode, setDistanceMode] = useState(false);
+            const [citiesForDistance, setCitiesForDistance] = useState([]);
+            const [dataError, setDataError] = useState(null);
+            
+            const mapRef = useRef(null); 
+
+            const displayableCities = useMemo(() => {
+                return cities.filter(city => selectedOcean === 'all' || city.ocean === selectedOcean);
+            }, [cities, selectedOcean]);
+
+            const groupedCities = useMemo(() => {
+                const groups = {};
+                displayableCities.forEach(city => {
+                    const key = `${city.x},${city.y}`;
+                    if (!groups[key]) groups[key] = [];
+                    groups[key].push(city);
+                });
+                return groups;
+            }, [displayableCities]);
+
+            // Cadrage auto qui prend en compte les DEUX joueurs pour trouver la zone de conflit
+            const mapBounds = useMemo(() => {
+                if (selectedOcean !== 'all') {
+                    const oX = parseInt(selectedOcean.charAt(0)) * 100;
+                    const oY = parseInt(selectedOcean.charAt(1)) * 100;
+                    return { minX: oX, maxX: oX + 100, minY: oY, maxY: oY + 100 };
+                }
+
+                const atkQuery = attackerSearch.trim().toLowerCase();
+                const defQuery = defenderSearch.trim().toLowerCase();
+                
+                const targets = cities.filter(c => !c.isGhost && (
+                    (atkQuery !== '' && c.player_name.toLowerCase().includes(atkQuery)) ||
+                    (defQuery !== '' && c.player_name.toLowerCase().includes(defQuery))
+                ));
+
+                if (targets.length > 0) {
+                    const xs = targets.map(c => c.x);
+                    const ys = targets.map(c => c.y);
+                    return { 
+                        minX: Math.max(0, Math.min(...xs) - 25), 
+                        maxX: Math.min(1000, Math.max(...xs) + 25), 
+                        minY: Math.max(0, Math.min(...ys) - 25), 
+                        maxY: Math.min(1000, Math.max(...ys) + 25) 
+                    };
+                }
+                
+                return { minX: 0, maxX: 1000, minY: 0, maxY: 1000 };
+            }, [cities, attackerSearch, defenderSearch, selectedOcean]);
+
+            const zoomToOccupiedAreas = useCallback((bounds = mapBounds) => {
+                if (cities.length === 0 || !mapRef.current) return;
+                
+                const width = bounds.maxX - bounds.minX;
+                const height = bounds.maxY - bounds.minY;
+                const mapContainer = mapRef.current.closest('.map-wrapper');
+                if (!mapContainer) return;
+
+                const mapWidth = mapContainer.offsetWidth; 
+                const mapHeight = mapContainer.offsetHeight;
+
+                const scaleX = mapWidth / width; 
+                const scaleY = mapHeight / height; 
+                
+                const maxZoom = selectedOcean !== 'all' ? 6 : 12;
+                const scale = Math.min(scaleX, scaleY, maxZoom); 
+
+                const centerX = (bounds.minX + bounds.maxX) / 2;
+                const centerY = (bounds.minY + bounds.maxY) / 2;
+                
+                setTransform({
+                    x: (mapWidth / 2) - centerX * scale,
+                    y: (mapHeight / 2) - centerY * scale,
+                    scale: scale
+                });
+            }, [cities.length, mapBounds, selectedOcean]);
+
+            const handleWheel = useCallback((e) => {
+                e.preventDefault(); 
+                const scaleFactor = e.deltaY > 0 ? 0.9 : 1.1;
+                const mapContainer = mapRef.current.closest('.map-wrapper');
+                const rect = mapContainer.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                
+                setTransform(prev => {
+                    const newScale = Math.max(0.3, Math.min(25, prev.scale * scaleFactor));
+                    return {
+                        x: mouseX - (mouseX - prev.x) * (newScale / prev.scale),
+                        y: mouseY - (mouseY - prev.y) * (newScale / prev.scale),
+                        scale: newScale
+                    };
+                });
+            }, []);
+            
+            useEffect(() => {
+                const mapElement = mapRef.current;
+                if (mapElement) {
+                    mapElement.addEventListener('wheel', handleWheel, { passive: false });
+                    return () => mapElement.removeEventListener('wheel', handleWheel);
+                }
+            }, [handleWheel, loading]); 
+
+            useEffect(() => {
+                const loadData = async () => {
+                    try {
+                        const { mergedCities, lastUpdate } = await fetchData();
+                        setCities(mergedCities);
+                        setLastUpdate(lastUpdate);
+                    } catch (err) {
+                        setDataError(err.message);
+                    } finally { 
+                        setLoading(false); 
+                    }
+                };
+                loadData();
+            }, []);
+            
+            useEffect(() => {
+                if (!loading && cities.length > 0) {
+                    zoomToOccupiedAreas(mapBounds);
+                }
+            }, [attackerSearch, defenderSearch, selectedOcean, loading]);
+
+            const oceans = useMemo(() => {
+                const list = [];
+                for(let i=0; i<100; i++) {
+                    list.push(i.toString().padStart(2, '0'));
+                }
+                return list;
+            }, []);
+
+            const handleMouseDown = useCallback((e) => {
+                if (e.button === 2) return;
+                setIsDragging(true);
+                setDragStart({ x: e.clientX - transform.x, y: e.clientY - transform.y });
+            }, [transform]);
+
+            const handleMouseMove = useCallback((e) => {
+                if (!isDragging || initialPinchDistance !== null) return;
+                setTransform(prev => ({ ...prev, x: e.clientX - dragStart.x, y: e.clientY - dragStart.y }));
+            }, [isDragging, dragStart, initialPinchDistance]);
+
+            const handleMouseUp = useCallback(() => { setIsDragging(false); }, []);
+            
+            const getTouchDistance = (touches) => {
+                return Math.sqrt(Math.pow(touches[0].clientX - touches[1].clientX, 2) + Math.pow(touches[0].clientY - touches[1].clientY, 2));
+            };
+
+            const handleTouchStart = useCallback((e) => {
+                if (e.touches.length === 2) {
+                    setInitialPinchDistance(getTouchDistance(e.touches));
+                    setInitialScale(transform.scale);
+                    setIsDragging(false);
+                } else if (e.touches.length === 1) {
+                    setIsDragging(true);
+                    setInitialPinchDistance(null);
+                    setDragStart({ x: e.touches[0].clientX - transform.x, y: e.touches[0].clientY - transform.y });
+                }
+            }, [transform]);
+
+            const handleTouchMove = useCallback((e) => {
+                if (e.touches.length === 2 && initialPinchDistance !== null) {
+                    e.preventDefault();
+                    const currentDistance = getTouchDistance(e.touches);
+                    const scaleFactor = currentDistance / initialPinchDistance;
+                    let newScale = Math.max(0.3, Math.min(25, initialScale * scaleFactor));
+                    const touchCenterX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+                    const touchCenterY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+
+                    setTransform(prev => ({
+                        x: touchCenterX - (touchCenterX - prev.x) * (newScale / prev.scale),
+                        y: touchCenterY - (touchCenterY - prev.y) * (newScale / prev.scale),
+                        scale: newScale
+                    }));
+                } else if (e.touches.length === 1 && isDragging) {
+                    setTransform(prev => ({ ...prev, x: e.touches[0].clientX - dragStart.x, y: e.touches[0].clientY - dragStart.y }));
+                }
+            }, [isDragging, dragStart, initialPinchDistance, initialScale]);
+
+            const handleCityClick = useCallback((e, cityOrCluster) => {
+                if (isDragging) return; 
+                if (distanceMode) {
+                    const city = Array.isArray(cityOrCluster) ? cityOrCluster[0] : cityOrCluster;
+                    setCitiesForDistance(prev => {
+                        if (prev.length === 0) return [city];
+                        if (prev.length === 1) {
+                            if (prev[0].id === city.id) return []; 
+                            return [...prev, city];
+                        }
+                        return [city];
+                    });
+                } else {
+                    setSelectedCity(prev => {
+                        let isSame = false;
+                        if (prev && cityOrCluster) {
+                            if (Array.isArray(prev) && Array.isArray(cityOrCluster)) {
+                                isSame = prev[0].x === cityOrCluster[0].x && prev[0].y === cityOrCluster[0].y;
+                            } else if (!Array.isArray(prev) && !Array.isArray(cityOrCluster)) {
+                                isSame = prev.id === cityOrCluster.id;
+                            }
+                        }
+                        return isSame ? null : cityOrCluster;
+                    });
+                }
+            }, [distanceMode, isDragging]);
+
+            const renderOceanSquares = useCallback(() => {
+                const squares = [];
+                for (let x = 0; x < 10; x++) {
+                    for (let y = 0; y < 10; y++) {
+                        const oceanNum = getGrepolisOcean(x * 100 + 1, y * 100 + 1);
+                        const isSelected = selectedOcean === oceanNum;
+                        const isEven = (x % 2 === 0) === (y % 2 === 0);
+                        squares.push(
+                            <g key={oceanNum}>
+                                <rect 
+                                    x={x * 100} y={y * 100} width={100} height={100} 
+                                    fill={isSelected ? '#1e293b' : (isEven ? '#1e3a5f' : '#2d4a6f')} 
+                                    stroke={isSelected ? '#f59e0b' : '#0f172a'} 
+                                    strokeWidth={isSelected ? '2' : '0.5'} 
+                                    opacity={selectedOcean === 'all' || isSelected ? 1 : 0.1}
+                                />
+                                <text 
+                                    x={x * 100 + 50} y={y * 100 + 50} textAnchor="middle" dy="0.35em" 
+                                    fill={isSelected ? '#f59e0b' : '#64748b'} fontSize="11" fontWeight="bold"
+                                    opacity={selectedOcean === 'all' || isSelected ? 0.8 : 0.05}
+                                >
+                                    {oceanNum}
+                                </text>
+                            </g>
+                        );
+                    }
+                }
+                return squares;
+            }, [selectedOcean]);
+
+            const renderDistanceLines = useCallback(() => {
+                if (citiesForDistance.length < 2) return null;
+                const [city1, city2] = citiesForDistance;
+                const dist = calculateDistance(city1.x, city1.y, city2.x, city2.y);
+                return (
+                    <g>
+                        <line x1={city1.x} y1={city1.y} x2={city2.x} y2={city2.y} stroke="#10b981" strokeWidth="1.5" className="distance-line" />
+                        <text x={(city1.x + city2.x) / 2} y={(city1.y + city2.y) / 2} textAnchor="middle" dy="-0.5em" fill="#10b981" fontSize={Math.max(4, 13 / transform.scale)} fontWeight="bold" style={{ pointerEvents: 'none', textShadow: '0 0 3px #0f172a' }}>{dist}</text>
+                    </g>
+                );
+            }, [citiesForDistance, transform.scale]);
+
+            // LOGIQUE DE COULEURS POUR LE JvJ + FANTÔMES
+            const renderCities = useMemo(() => {
+                const atkActive = attackerSearch.trim() !== '';
+                const defActive = defenderSearch.trim() !== '';
+                
+                const atkQuery = attackerSearch.toLowerCase();
+                const defQuery = defenderSearch.toLowerCase();
+
+                return Object.entries(groupedCities).map(([key, list]) => {
+                    const [x, y] = key.split(',').map(Number);
+                    
+                    const hasAttacker = list.some(c => !c.isGhost && atkActive && c.player_name.toLowerCase().includes(atkQuery));
+                    const hasDefender = list.some(c => !c.isGhost && defActive && c.player_name.toLowerCase().includes(defQuery));
+                    const hasGhost = list.some(c => c.isGhost);
+
+                    let cityColor = '#334155'; // Gris par défaut
+                    let radius = Math.max(1.0, 3.2 / transform.scale);
+                    let opacity = 0.15;
+
+                    if (hasAttacker) {
+                        cityColor = '#06b6d4'; // CYAN FLUO pour l'attaquant (vous / alliés)
+                        radius = Math.max(2.0, 6.0 / transform.scale);
+                        opacity = 1;
+                    } else if (hasDefender) {
+                        cityColor = '#ef4444'; // ROUGE VIF pour le défenseur (la cible)
+                        radius = Math.max(2.0, 6.0 / transform.scale);
+                        opacity = 1;
+                    } else if (hasGhost) {
+                        cityColor = '#fef08a'; // JAUNE PÂLE pour les fantômes (toujours prioritaires sur le décor)
+                        radius = Math.max(1.4, 4.5 / transform.scale);
+                        opacity = 0.95;
+                    }
+
+                    const payload = list.length > 1 ? list : list[0];
+                    const isHovered = hoveredCity && ((Array.isArray(hoveredCity) && hoveredCity[0].x === x && hoveredCity[0].y === y) || (!Array.isArray(hoveredCity) && hoveredCity.x === x && hoveredCity.y === y));
+                    const isSelected = selectedCity && ((Array.isArray(selectedCity) && selectedCity[0].x === x && selectedCity[0].y === y) || (!Array.isArray(selectedCity) && selectedCity.x === x && selectedCity.y === y));
+
+                    if (isSelected || isHovered) {
+                        radius = radius * 1.3;
+                    }
+
+                    return (
+                        <g key={key}>
+                            <circle 
+                                cx={x} cy={y} r={radius} fill={cityColor} 
+                                stroke={isSelected || isHovered ? '#ffffff' : 'none'} 
+                                strokeWidth={isSelected || isHovered ? Math.max(0.5, 1.5 / transform.scale) : 0}
+                                opacity={isHovered || isSelected ? 1 : opacity}
+                                onMouseEnter={() => setHoveredCity(payload)}
+                                onMouseLeave={() => setHoveredCity(null)}
+                                onClick={(e) => handleCityClick(e, payload)}
+                                onTouchEnd={(e) => handleCityClick(e, payload)} 
+                                style={{ cursor: 'pointer' }}
+                            />
+                            {(isHovered || isSelected) && !distanceMode && transform.scale > 1.5 && (
+                                <g style={{ pointerEvents: 'none' }}>
+                                    <text x={x} y={y - 5 - (5 / transform.scale)} textAnchor="middle" fill="#fbbf24" fontSize={Math.max(3, 9 / transform.scale)} fontWeight="bold" style={{ textShadow: '0 0 3px #0f172a' }}>
+                                        {list[0].name} {list.length > 1 ? `(+${list.length - 1})` : ''}
+                                    </text>
+                                    <text x={x} y={y - 1 - (2 / transform.scale)} textAnchor="middle" fill="#e2e8f0" fontSize={Math.max(2.5, 7.5 / transform.scale)} style={{ textShadow: '0 0 3px #0f172a' }}>
+                                        {list[0].player_name} ({x},{y})
+                                    </text>
+                                </g>
+                            )}
+                        </g>
+                    );
+                });
+            }, [groupedCities, hoveredCity, selectedCity, attackerSearch, defenderSearch, distanceMode, transform.scale, handleCityClick]);
+
+            if (loading) {
+                return (
+                    <div className="w-full h-screen bg-slate-900 flex items-center justify-center text-white font-semibold">
+                        <div className="text-center">
+                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-cyan-500 mx-auto mb-4"></div>
+                            Génération de l'environnement Tactique Joueur vs Joueur...
+                        </div>
+                    </div>
+                );
+            }
+
+            if (dataError) {
+                return (
+                    <div className="w-full h-screen bg-slate-900 flex items-center justify-center text-red-400 p-4 text-center">
+                        <div>
+                            ⚠️ Échec du chargement des fichiers serveurs (.txt)<br/>
+                            <span className="text-sm text-slate-400">{dataError}</span>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="w-full h-screen bg-slate-900 flex flex-col">
+                    {/* ZONE DE CONTROLE DES DUELS */}
+                    <div className="bg-slate-800 p-4 shadow-lg sticky top-0 z-10 border-b border-slate-700">
+                        <h1 className="text-xl font-bold text-cyan-400 mb-3 flex items-center gap-2">
+                            ⚔️ Grepolis - Tactical Player Duel
+                        </h1>
+                        <div className="flex flex-wrap items-center gap-3">
+                            {/* ATTAQUANT */}
+                            <div className="w-full sm:w-auto">
+                                <input 
+                                    type="text" placeholder="🔵 Attaquant (Moi / Allié)..."
+                                    value={attackerSearch} onChange={(e) => setAttackerSearch(e.target.value)}
+                                    className="pl-4 pr-4 py-2 bg-slate-700 text-white rounded-lg w-full sm:w-56 border border-cyan-600/50 focus:outline-none focus:border-cyan-400 font-medium"
+                                />
+                            </div>
+
+                            <span className="text-slate-500 font-bold hidden sm:inline">VS</span>
+                            
+                            {/* CIBLE / DEFENSEUR */}
+                            <div className="w-full sm:w-auto">
+                                <input 
+                                    type="text" placeholder="🔴 Défenseur (Cible à Off)..."
+                                    value={defenderSearch} onChange={(e) => setDefenderSearch(e.target.value)}
+                                    className="pl-4 pr-4 py-2 bg-slate-700 text-white rounded-lg w-full sm:w-56 border border-red-600/50 focus:outline-none focus:border-red-400 font-medium"
+                                />
+                            </div>
+                            
+                            <select
+                                value={selectedOcean} onChange={(e) => setSelectedOcean(e.target.value)}
+                                className="bg-slate-700 text-white py-2 px-3 rounded-lg border border-slate-600 focus:outline-none focus:border-amber-400 w-full sm:w-40"
+                            >
+                                <option value="all">Toutes mers</option>
+                                {oceans.map(o => <option key={o} value={o}>Mer {o}</option>)}
+                            </select>
+
+                            <div className="flex gap-2 w-full sm:w-auto ml-auto">
+                                <button onClick={() => zoomToOccupiedAreas(mapBounds)} className="flex-1 sm:flex-none px-4 py-2 bg-cyan-600 text-white rounded-lg font-semibold hover:bg-cyan-500 transition-colors">🎯 Recadrer Duel</button>
+                                <button onClick={() => setDistanceMode(!distanceMode)} className={`px-3 py-2 rounded-lg transition-colors ${distanceMode ? 'bg-green-600 text-white' : 'bg-slate-600 text-slate-300'}`}>📏 Règle</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* INTERFACE SPLIT */}
+                    <div className="flex flex-1 overflow-hidden md:flex-row flex-col">
+                        <div className="flex-1 relative overflow-hidden map-wrapper">
+                            <svg 
+                                ref={mapRef} viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid meet" className="w-full h-full map-container"
+                                style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`, transformOrigin: 'top left' }}
+                                onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
+                                onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleMouseUp}
+							>
+                                <g>
+                                    {renderOceanSquares()}
+                                    {renderDistanceLines()}
+                                    {renderCities}
+                                </g>
+                            </svg>
+                        </div>
+
+                        {/* BARRE DE RENSEIGNEMENTS MILITAIRES */}
+                        <div className="w-full sm:w-80 p-4 bg-slate-800 text-slate-300 flex-shrink-0 overflow-y-auto sidebar border-l border-slate-700">
+                            <h2 className="text-lg font-bold text-white mb-2">Légende Tactique</h2>
+                            
+                            <div className="bg-slate-900 p-3 rounded-lg mb-4 space-y-2 text-xs">
+                                <div className="flex items-center gap-2">
+                                    <span className="w-3 h-3 rounded-full bg-cyan-500 inline-block"></span>
+                                    <span className="text-cyan-400 font-semibold">Villes Attaquant</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="w-3 h-3 rounded-full bg-red-500 inline-block"></span>
+                                    <span className="text-red-400 font-semibold">Villes Défenseur (Cible)</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="w-3 h-3 rounded-full bg-yellow-200 inline-block"></span>
+                                    <span className="text-yellow-200 font-semibold">Opportunités Fantômes</span>
+                                </div>
+                            </div>
+
+                            <h2 className="text-base font-bold text-white mb-2 border-t border-slate-700 pt-3">Détails de l'île sélectionnée</h2>
+
+                            {selectedCity ? (
+                                <div className="bg-slate-700 p-3 rounded-lg space-y-2 text-sm">
+                                    <h3 className="font-bold text-amber-300 border-b border-slate-600 pb-1">
+                                        {Array.isArray(selectedCity) ? `Groupe de ${selectedCity.length} villes` : selectedCity.name}
+                                    </h3>
+                                    {Array.isArray(selectedCity) ? (
+                                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                                            {selectedCity.map((c, i) => {
+                                                const isAtk = attackerSearch.trim() !== '' && c.player_name.toLowerCase().includes(attackerSearch.toLowerCase());
+                                                const isDef = defenderSearch.trim() !== '' && c.player_name.toLowerCase().includes(defenderSearch.toLowerCase());
+                                                
+                                                let badgeColor = "text-slate-300";
+                                                if (c.isGhost) badgeColor = "text-yellow-300 font-bold";
+                                                else if (isAtk) badgeColor = "text-cyan-400 font-bold";
+                                                else if (isDef) badgeColor = "text-red-400 font-bold";
+
+                                                return (
+                                                    <div key={i} className="border-b border-slate-600 pb-1 last:border-0 text-xs">
+                                                        <div className="font-semibold text-white">{c.name} ({c.points} pts)</div>
+                                                        <div className={badgeColor}>
+                                                            {c.isGhost ? '💀 ' : '👤 '}{c.player_name} {c.alliance_name !== 'Aucune' ? `[${c.alliance_name}]` : ''}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-1 text-xs">
+                                            <div>📍 Position : <strong>{selectedCity.x}, {selectedCity.y}</strong> (Mer {selectedCity.ocean})</div>
+                                            <div>📊 Points : {selectedCity.points.toLocaleString('fr-FR')}</div>
+                                            <div className="pt-1 mt-2 border-t border-slate-600">
+                                                Propriétaire : <span className="font-bold text-white">{selectedCity.player_name}</span>
+                                            </div>
+                                            {!selectedCity.isGhost && (
+                                                <>
+                                                    <div>Alliance : {selectedCity.alliance_name}</div>
+                                                    <div>Points Général : {selectedCity.player_points?.toLocaleString('fr-FR')}</div>
+                                                </>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <p className="text-xs text-slate-400 italic">Sélectionnez un point pour calculer les axes d'attaques, vérifier la présence de bunkers ou caler une colonisation.</p>
+                            )}
+
+                            {lastUpdate && (
+                                <div className="mt-6 text-[10px] text-slate-500 text-right">
+                                    Base à jour : {lastUpdate}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<GrepolisTacticalMap />, document.getElementById('root'));
+    </script>
+</body>
+</html>
