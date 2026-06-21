@@ -133,18 +133,21 @@
             border-radius: 12px;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
             overflow-x: auto;
+            width: 100%;
         }
 
         .ocean-grid {
             display: grid;
-            grid-template-columns: repeat(10, 1fr);
+            grid-template-columns: repeat(10, minmax(120px, 1fr));
             gap: 8px;
-            max-width: 1200px;
+            min-width: max-content;
+            width: fit-content;
             margin: 0 auto;
         }
 
         .ocean-cell {
-            aspect-ratio: 1;
+            width: 120px;
+            height: 120px;
             border: 3px solid #333;
             border-radius: 8px;
             display: flex;
@@ -156,6 +159,7 @@
             position: relative;
             font-size: 11px;
             line-height: 1.2;
+            overflow-y: auto;
         }
 
         .ocean-cell:hover {
