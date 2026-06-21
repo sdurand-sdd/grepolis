@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grepolis - Top 3 Alliances par Océan</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            color: #1e3c72;
+            margin-bottom: 20px;
+            font-size: 28px;
+            text-align: center;
+        }
+
+        .controls {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        label {
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+
+        select {
+            padding: 10px 15px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+            transition: border-color 0.3s;
+        }
+
+        select:hover {
+            border-color: #2a5298;
+        }
+
+        select:focus {
+            outline: none;
+            border-color: #1e3c72;
+        }
+
+        button {
+            padding: 12px 30px;
+            background: #2a5298;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 22px;
+        }
+
+        button:hover {
+            background: #1e3c72;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .legend {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            flex-wrap: wrap;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .legend-color {
+            width: 30px;
+            height: 30px;
+            border-radius: 4px;
+            border: 2px solid #333;
+        }
+
+        .map-container {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            overflow-x: auto;
+        }
+
+        .ocean-grid {
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            gap: 8px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .ocean-cell {
+            aspect-ratio: 1;
+            border: 3px solid #333;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            padding: 8px;
+            transition: all 0.3s;
+            cursor: pointer;
+            position: relative;
+            font-size: 11px;
+            line-height: 1.2;
+        }
+
+        .ocean-cell:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+            z-index: 10;
+        }
+
+        .ocean-number {
+            font-size: 14px;
+            font-weight: 700;
+            color: #1e3c72;
+            margin-bottom: 5px;
+            text-align: center;
+        }
+
+        .alliance-rank {
+            margin-bottom: 6px;
+            padding: 4px;
+            border-radius: 4px;
+            color: #333;
+        }
+
+        .rank-1 {
+            background-color: rgba(90, 158, 95, 0.2);
+            border-left: 3px solid #5a9e5f;
+        }
+
+        .rank-2 {
+            background-color: rgba(255, 165, 0, 0.2);
+            border-left: 3px solid #ffa500;
+        }
+
+        .rank-3 {
+            background-color: rgba(196, 30, 30, 0.2);
+            border-left: 3px solid #c41e1e;
+        }
+
+        .alliance-name {
+            font-weight: 600;
+            font-size: 10px;
+            color: #333;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .alliance-stats {
+            font-size: 9px;
+            color: #555;
+        }
+
+        .towns-delta {
+            color: #0d5c0d;
+            font-weight: 600;
+        }
+
+        .towns-delta.negative {
+            color: #8b0000;
+        }
+
+        .points-delta {
+            font-size: 9px;
+            color: #666;
+        }
+
+        .rank-change {
+            font-size: 11px;
+            font-weight: 700;
+            display: inline-block;
+            margin-left: 4px;
+        }
+
+        .rank-up {
+            color: #0d7c0d;
+        }
+
+        .rank-down {
+            color: #c41e1e;
+        }
+
+        .info-message {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            font-size: 16px;
+        }
+
+        #loading-status {
+            padding: 8px 12px;
+            background: #f0f0f0;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        #loading-status.loading {
+            color: #2a5298;
+        }
+
+        #loading-status.success {
+            color: #0d7c0d;
+        }
+
+        #loading-status.error {
+            color: #c41e1e;
+        }
+
+        @media (max-width: 768px) {
+            .ocean-grid {
+                gap: 4px;
+            }
+            
+            .ocean-cell {
+                font-size: 9px;
+                padding: 5px;
+            }
+            
+            .ocean-number {
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏆 Grepolis - Top 3 Alliances par Océan</h1>
+            <div class="controls">
+                <div class="control-group">
+                    <label for="week1-select">Semaine 1 :</label>
+                    <select id="week1-select">
+                        <option value="">Choisir...</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="week2-select">Semaine 2 :</label>
+                    <select id="week2-select">
+                        <option value="">Choisir...</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label>Statut :</label>
+                    <div id="loading-status" class="loading">Chargement...</div>
+                </div>
+                
+                <button id="compare-btn" disabled>Comparer</button>
+                <button id="refresh-btn">🔄 Actualiser</button>
+            </div>
+        </header>
+
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background: #5a9e5f;"></div>
+                <span>1ère Alliance (Dominante)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #ffa500;"></div>
+                <span>2ème Alliance</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #c41e1e;"></div>
+                <span>3ème Alliance</span>
+            </div>
+        </div>
+
+        <div class="map-container">
+            <div id="ocean-grid" class="ocean-grid">
+                <div class="info-message">
+                    Veuillez charger les données et sélectionner deux semaines à comparer.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const GITHUB_REPO = 'sdurand-sdd/grepolis';
+        const GITHUB_RAW_BASE = `https://raw.githubusercontent.com/${GITHUB_REPO}/main`;
+        const GITHUB_API_BASE = `https://api.github.com/repos/${GITHUB_REPO}/contents`;
+
+        let allData = {};
+        let availableWeeks = new Set();
+
+        const loadingStatus = document.getElementById('loading-status');
+        const week1Select = document.getElementById('week1-select');
+        const week2Select = document.getElementById('week2-select');
+        const compareBtn = document.getElementById('compare-btn');
+        const refreshBtn = document.getElementById('refresh-btn');
+        const oceanGrid = document.getElementById('ocean-grid');
+
+        compareBtn.addEventListener('click', async () => await compareWeeks());
+        refreshBtn.addEventListener('click', loadAllData);
+        week1Select.addEventListener('change', updateCompareButton);
+        week2Select.addEventListener('change', updateCompareButton);
+
+        // Charger les données au démarrage
+        loadAllData();
+
+        async function loadCurrentFiles() {
+            try {
+                const weekKey = 'current';
+                allData[weekKey] = {
+                    alliances: await fetchAndParse(`${GITHUB_RAW_BASE}/alliances.txt`, 'alliances'),
+                    players: await fetchAndParse(`${GITHUB_RAW_BASE}/players.txt`, 'players'),
+                    towns: await fetchAndParse(`${GITHUB_RAW_BASE}/towns.txt`, 'towns'),
+                    loaded: true
+                };
+                availableWeeks.add(weekKey);
+            } catch (error) {
+                console.error('Erreur lors du chargement des fichiers actuels:', error);
+                throw error;
+            }
+        }
+
+        async function listArchiveWeeks() {
+            try {
+                const response = await fetch(`${GITHUB_API_BASE}/archives`);
+                const files = await response.json();
+
+                if (!Array.isArray(files)) {
+                    throw new Error('Impossible de lister les fichiers');
+                }
+
+                const weekFiles = {};
+                files.forEach(file => {
+                    const match = file.name.match(/(\w+)_(\d{4})_W(\d{2})\.txt/);
+                    if (match) {
+                        const [, type, year, week] = match;
+                        const weekKey = `${year}_W${week}`;
+                        if (!weekFiles[weekKey]) {
+                            weekFiles[weekKey] = {};
+                        }
+                        weekFiles[weekKey][type] = file.download_url;
+                    }
+                });
+
+                Object.entries(weekFiles).forEach(([weekKey, files]) => {
+                    if (files.alliances && files.players && files.towns) {
+                        availableWeeks.add(weekKey);
+                        if (!allData[weekKey]) {
+                            allData[weekKey] = { urls: files, loaded: false };
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Erreur lors du listage des archives:', error);
+                throw error;
+            }
+        }
+
+        async function loadAllData() {
+            loadingStatus.textContent = 'Chargement des données...';
+            loadingStatus.className = 'loading';
+            compareBtn.disabled = true;
+
+            allData = {};
+            availableWeeks.clear();
+
+            try {
+                await loadCurrentFiles();
+                await listArchiveWeeks();
+                
+                loadingStatus.textContent = `✓ Semaine actuelle + ${availableWeeks.size - 1} archives disponibles`;
+                loadingStatus.className = 'success';
+                
+                populateWeekSelects();
+            } catch (error) {
+                console.error('Erreur de chargement:', error);
+                loadingStatus.textContent = '✗ Erreur de chargement';
+                loadingStatus.className = 'error';
+            }
+        }
+
+        async function loadWeekData(weekKey) {
+            if (allData[weekKey] && allData[weekKey].loaded) {
+                return;
+            }
+
+            if (weekKey === 'current') {
+                return;
+            }
+
+            try {
+                const urls = allData[weekKey].urls;
+                allData[weekKey] = {
+                    alliances: await fetchAndParse(urls.alliances, 'alliances'),
+                    players: await fetchAndParse(urls.players, 'players'),
+                    towns: await fetchAndParse(urls.towns, 'towns'),
+                    loaded: true
+                };
+            } catch (error) {
+                console.error(`Erreur lors du chargement de ${weekKey}:`, error);
+                throw error;
+            }
+        }
+
+        async function fetchAndParse(url, type) {
+            const response = await fetch(url);
+            const content = await response.text();
+            return parseFile(content, type);
+        }
+
+        function parseFile(content, type) {
+            const lines = content.trim().split('\n');
+            const data = {};
+
+            lines.forEach(line => {
+                const parts = line.split(',');
+                if (type === 'alliances' && parts.length >= 4) {
+                    data[parts[0]] = { 
+                        id: parts[0], 
+                        name: decodeURIComponent(parts[1].replace(/\+/g, ' ')), 
+                        points: parseInt(parts[2]), 
+                        rank: parseInt(parts[3]) 
+                    };
+                } else if (type === 'players' && parts.length >= 5) {
+                    data[parts[0]] = { 
+                        id: parts[0], 
+                        name: decodeURIComponent(parts[1].replace(/\+/g, ' ')), 
+                        allianceId: parts[2], 
+                        points: parseInt(parts[3]), 
+                        rank: parseInt(parts[4]) 
+                    };
+                } else if (type === 'towns' && parts.length >= 7) {
+                    const playerId = parts[1];
+                    if (!data[playerId]) data[playerId] = [];
+                    
+                    data[playerId].push({ 
+                        id: parts[0], 
+                        playerId: playerId, 
+                        name: decodeURIComponent(parts[2].replace(/\+/g, ' ')), 
+                        x: parseInt(parts[3]), 
+                        y: parseInt(parts[4]), 
+                        points: parseInt(parts[6]) 
+                    });
+                }
+            });
+
+            return data;
+        }
+
+        function populateWeekSelects() {
+            const weeks = Array.from(availableWeeks).sort().reverse();
+            
+            week1Select.innerHTML = '<option value="">Choisir...</option>';
+            week2Select.innerHTML = '<option value="">Choisir...</option>';
+            
+            weeks.forEach(week => {
+                const displayText = week === 'current' ? '📍 Semaine actuelle' : week.replace('_', ' ');
+                
+                const option1 = document.createElement('option');
+                option1.value = week;
+                option1.textContent = displayText;
+                week1Select.appendChild(option1);
+                
+                const option2 = document.createElement('option');
+                option2.value = week;
+                option2.textContent = displayText;
+                week2Select.appendChild(option2);
+            });
+
+            const archiveWeeks = weeks.filter(w => w !== 'current');
+            if (archiveWeeks.length >= 1) {
+                week1Select.value = archiveWeeks[0];
+                week2Select.value = 'current';
+            }
+        }
+
+        function updateCompareButton() {
+            compareBtn.disabled = !week1Select.value || !week2Select.value;
+        }
+
+        function calculateOceanStats(weekData, allianceId) {
+            const oceanStats = {};
+            
+            if (!weekData.players || !weekData.towns) return oceanStats;
+
+            const alliancePlayers = Object.values(weekData.players)
+                .filter(p => p.allianceId === allianceId)
+                .map(p => p.id);
+
+            alliancePlayers.forEach(playerId => {
+                const playerTowns = weekData.towns[playerId] || [];
+                playerTowns.forEach(town => {
+                    const ocean = Math.floor(town.x / 100) * 10 + Math.floor(town.y / 100);
+                    if (!oceanStats[ocean]) {
+                        oceanStats[ocean] = { towns: 0, points: 0 };
+                    }
+                    oceanStats[ocean].towns++;
+                    oceanStats[ocean].points += town.points;
+                });
+            });
+
+            return oceanStats;
+        }
+
+        function calculateOceanRankings(weekData) {
+            const allianceOceanData = {};
+            
+            if (!weekData.players || !weekData.towns || !weekData.alliances) return {};
+
+            Object.values(weekData.alliances).forEach(alliance => {
+                const oceanStats = calculateOceanStats(weekData, alliance.id);
+                Object.entries(oceanStats).forEach(([ocean, stats]) => {
+                    if (!allianceOceanData[ocean]) allianceOceanData[ocean] = [];
+                    allianceOceanData[ocean].push({
+                        allianceId: alliance.id,
+                        allianceName: alliance.name,
+                        points: stats.points,
+                        towns: stats.towns
+                    });
+                });
+            });
+
+            const rankings = {};
+            Object.entries(allianceOceanData).forEach(([ocean, alliances]) => {
+                alliances.sort((a, b) => b.points - a.points);
+                rankings[ocean] = {};
+                alliances.forEach((alliance, index) => {
+                    rankings[ocean][alliance.allianceId] = {
+                        rank: index + 1,
+                        name: alliance.allianceName,
+                        points: alliance.points,
+                        towns: alliance.towns
+                    };
+                });
+            });
+
+            return rankings;
+        }
+
+        async function compareWeeks() {
+            const week1 = week1Select.value;
+            const week2 = week2Select.value;
+
+            if (!week1 || !week2) {
+                oceanGrid.innerHTML = '<div class="info-message">Veuillez sélectionner deux semaines à comparer.</div>';
+                return;
+            }
+
+            oceanGrid.innerHTML = '<div class="info-message">⏳ Chargement des données...</div>';
+            compareBtn.disabled = true;
+
+            try {
+                await loadWeekData(week1);
+                await loadWeekData(week2);
+
+                if (!allData[week1] || !allData[week2]) {
+                    oceanGrid.innerHTML = '<div class="info-message">Données manquantes pour les semaines sélectionnées.</div>';
+                    compareBtn.disabled = false;
+                    return;
+                }
+
+                const rankings1 = calculateOceanRankings(allData[week1]);
+                const rankings2 = calculateOceanRankings(allData[week2]);
+
+                oceanGrid.innerHTML = '';
+
+                for (let y = 0; y < 10; y++) {
+                    for (let x = 0; x < 10; x++) {
+                        const ocean = x * 10 + y;
+                        
+                        const cell = document.createElement('div');
+                        cell.className = 'ocean-cell';
+
+                        const oceanNum = document.createElement('div');
+                        oceanNum.className = 'ocean-number';
+                        oceanNum.textContent = ocean.toString().padStart(2, '0');
+                        cell.appendChild(oceanNum);
+
+                        // Top 3 de la semaine 2
+                        const top3 = [];
+                        if (rankings2[ocean]) {
+                            Object.entries(rankings2[ocean])
+                                .filter(([_, data]) => data.rank <= 3)
+                                .forEach(([allianceId, data]) => {
+                                    const rank1Data = rankings1[ocean]?.[allianceId];
+                                    const townsDelta = data.towns - (rank1Data?.towns || 0);
+                                    const pointsDelta = data.points - (rank1Data?.points || 0);
+                                    const rankDelta = (rank1Data?.rank || 0) - data.rank;
+
+                                    top3.push({
+                                        rank: data.rank,
+                                        name: data.name,
+                                        townsDelta: townsDelta,
+                                        pointsDelta: pointsDelta,
+                                        rankDelta: rankDelta
+                                    });
+                                });
+                        }
+
+                        // Afficher les top 3
+                        for (let i = 0; i < 3; i++) {
+                            const allianceDiv = document.createElement('div');
+                            const rankClass = `rank-${i + 1}`;
+                            allianceDiv.className = `alliance-rank ${rankClass}`;
+
+                            if (i < top3.length) {
+                                const a = top3[i];
+                                const townsClass = a.townsDelta >= 0 ? 'towns-delta' : 'towns-delta negative';
+                                const rankArrow = a.rankDelta > 0 ? `↑${a.rankDelta}` : a.rankDelta < 0 ? `↓${Math.abs(a.rankDelta)}` : '→0';
+                                const rankClass2 = a.rankDelta > 0 ? 'rank-up' : a.rankDelta < 0 ? 'rank-down' : '';
+
+                                allianceDiv.innerHTML = `
+                                    <div class="alliance-name">${a.rank}. ${a.name}</div>
+                                    <div class="alliance-stats">
+                                        <span class="${townsClass}">${a.townsDelta >= 0 ? '+' : ''}${a.townsDelta} villes</span><br>
+                                        <span class="points-delta">${a.pointsDelta >= 0 ? '+' : ''}${a.pointsDelta.toLocaleString()} pts <span class="rank-change ${rankClass2}">${rankArrow}</span></span>
+                                    </div>
+                                `;
+                            } else {
+                                allianceDiv.innerHTML = '<div class="alliance-name">-</div>';
+                            }
+
+                            cell.appendChild(allianceDiv);
+                        }
+
+                        oceanGrid.appendChild(cell);
+                    }
+                }
+            } catch (error) {
+                console.error('Erreur lors de la comparaison:', error);
+                oceanGrid.innerHTML = '<div class="info-message">❌ Erreur lors du chargement des données.</div>';
+            } finally {
+                compareBtn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
