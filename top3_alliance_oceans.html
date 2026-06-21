@@ -651,6 +651,9 @@
                                 });
                         }
 
+                        // Trier par rang pour assurer un ordre cohérent
+                        top3.sort((a, b) => a.rank - b.rank);
+
                         // Afficher les top 3
                         for (let i = 0; i < 3; i++) {
                             const allianceDiv = document.createElement('div');
