@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grepolis – Emplacements par océan</title>
+<style>
+  :root {
+    --bg: #f4efe6; --card: #fffdf8; --ink: #2b2118; --muted: #7a6a58;
+    --line: #e2d8c6; --accent: #8a5a2b; --free: #2e7d4f; --ghost: #8e6bb0; --used: #b5533c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1d1914; --card: #272119; --ink: #f1e8d8; --muted: #a8977f;
+      --line: #3b3226; --accent: #d6a15f; --free: #5fc48a; --ghost: #b996db; --used: #e07a63;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif; padding: 20px; }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  h1 { margin: 0 0 4px; font-size: 1.6rem; }
+  .sub { color: var(--muted); font-size: .9rem; margin-bottom: 18px; }
+  .bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  label { font-weight: bold; }
+  select, button, input[type=file] { font: inherit; padding: 8px 10px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  select { min-width: 220px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 12px; margin: 16px 0; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 14px; border-left: 5px solid var(--accent); }
+  .card .n { font-size: 2rem; font-weight: bold; line-height: 1.1; }
+  .card .t { color: var(--muted); font-size: .85rem; margin-top: 4px; }
+  .card.free { border-left-color: var(--free); } .card.free .n { color: var(--free); }
+  .card.ghost { border-left-color: var(--ghost); } .card.ghost .n { color: var(--ghost); }
+  .card.used { border-left-color: var(--used); } .card.used .n { color: var(--used); }
+  .progress { height: 14px; border-radius: 7px; overflow: hidden; display: flex;
+    background: var(--line); margin: 0 0 18px; }
+  .progress div { height: 100%; }
+  .legend { color: var(--muted); font-size: .82rem; margin: -10px 0 18px; }
+  table { width: 100%; border-collapse: collapse; background: var(--card);
+    border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  th, td { padding: 7px 10px; text-align: right; border-bottom: 1px solid var(--line); font-size: .9rem; }
+  th:first-child, td:first-child { text-align: left; }
+  th { background: var(--bg); cursor: pointer; user-select: none; white-space: nowrap; }
+  .scroll { overflow-x: auto; }
+  .msg { padding: 12px; border-radius: 8px; background: var(--card); border: 1px solid var(--line); margin: 12px 0; }
+  .err { border-color: var(--used); color: var(--used); }
+  h2 { font-size: 1.1rem; margin: 22px 0 8px; }
+  .small { font-size: .8rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🏛️ Emplacements par océan</h1>
+  <div class="sub" id="meta">Chargement des données…</div>
+
+  <div class="bar">
+    <label for="ocean">Océan</label>
+    <select id="ocean" disabled></select>
+    <span class="small" id="fileHint"></span>
+  </div>
+
+  <div id="manual" class="msg err" style="display:none">
+    Impossible de charger automatiquement <code>islands.txt</code> / <code>towns.txt</code>
+    (normal si la page est ouverte en local). Sélectionne les deux fichiers manuellement :
+    <div style="margin-top:8px"><input type="file" id="pick" multiple accept=".txt"></div>
+  </div>
+
+  <div id="result" style="display:none">
+    <h2 id="title"></h2>
+    <div class="cards">
+      <div class="card"><div class="n" id="cTotal">–</div><div class="t">Emplacements au total</div></div>
+      <div class="card used"><div class="n" id="cUsed">–</div><div class="t">Occupés par des joueurs</div></div>
+      <div class="card free"><div class="n" id="cFree">–</div><div class="t">Totalement libres</div></div>
+      <div class="card ghost"><div class="n" id="cGhost">–</div><div class="t">Villes fantômes</div></div>
+      <div class="card free"><div class="n" id="cFreeGhost">–</div><div class="t">Libres + fantômes</div></div>
+    </div>
+    <div class="progress" id="bar"></div>
+    <div class="legend">
+      <span style="color:var(--used)">■</span> occupés &nbsp;
+      <span style="color:var(--ghost)">■</span> fantômes &nbsp;
+      <span style="color:var(--free)">■</span> libres
+    </div>
+
+    <h2>Détail par île</h2>
+    <div class="scroll">
+      <table>
+        <thead><tr>
+          <th data-k="coord">Île (x:y)</th>
+          <th data-k="total">Emplacements</th>
+          <th data-k="used">Occupés</th>
+          <th data-k="ghost">Fantômes</th>
+          <th data-k="free">Libres</th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const ISLANDS_URL = "islands.txt";
+const TOWNS_URL = "towns.txt";
+
+let islands = [];   // {x,y,total}
+let towns = [];     // {x,y,ghost}
+let byOcean = {};   // ocean -> {islands: Map, total}
+let sortKey = "free", sortDir = -1, currentOcean = null;
+
+const oceanOf = (x, y) => Math.floor(x / 100) * 10 + Math.floor(y / 100);
+const fmtOcean = n => "Océan " + String(n).padStart(2, "0");
+
+function parseLines(text) {
+  return text.split(/\r?\n/).filter(l => l.trim()).map(l => l.split(","));
+}
+
+function load(islandsText, townsText, lastModified) {
+  islands = parseLines(islandsText).map(c => ({
+    x: +c[1], y: +c[2], total: +c[4]
+  })).filter(i => !isNaN(i.x) && !isNaN(i.y));
+
+  // towns.txt : town_id, player_id, name, island_x, island_y, slot_number, points
+  towns = parseLines(townsText).map(c => ({
+    x: +c[3], y: +c[4], ghost: !c[1] || c[1].trim() === ""
+  })).filter(t => !isNaN(t.x) && !isNaN(t.y));
+
+  const islandMap = new Map(); // "x:y" -> island stats
+  for (const i of islands) {
+    islandMap.set(i.x + ":" + i.y, { x: i.x, y: i.y, total: i.total, used: 0, ghost: 0 });
+  }
+  for (const t of towns) {
+    const isl = islandMap.get(t.x + ":" + t.y);
+    if (!isl) continue;
+    if (t.ghost) isl.ghost++; else isl.used++;
+  }
+  byOcean = {};
+  for (const isl of islandMap.values()) {
+    const o = oceanOf(isl.x, isl.y);
+    (byOcean[o] ||= []).push(isl);
+  }
+
+  const sel = document.getElementById("ocean");
+  const oceans = Object.keys(byOcean).map(Number).sort((a, b) => a - b);
+  sel.innerHTML = oceans.map(o => `<option value="${o}">${fmtOcean(o)}</option>`).join("");
+  sel.disabled = false;
+  document.getElementById("manual").style.display = "none";
+  document.getElementById("meta").textContent =
+    `${islands.length} îles · ${towns.length} villes` +
+    (lastModified ? ` · données du ${new Date(lastModified).toLocaleString("fr-FR")}` : "");
+  currentOcean = oceans[0];
+  render();
+}
+
+function render() {
+  if (currentOcean == null) return;
+  const list = byOcean[currentOcean] || [];
+  const total = list.reduce((s, i) => s + i.total, 0);
+  const used = list.reduce((s, i) => s + i.used, 0);
+  const ghost = list.reduce((s, i) => s + i.ghost, 0);
+  const free = total - used - ghost;
+
+  document.getElementById("result").style.display = "";
+  document.getElementById("title").textContent = fmtOcean(currentOcean);
+  document.getElementById("cTotal").textContent = total;
+  document.getElementById("cUsed").textContent = used;
+  document.getElementById("cFree").textContent = free;
+  document.getElementById("cGhost").textContent = ghost;
+  document.getElementById("cFreeGhost").textContent = free + ghost;
+
+  const pct = v => total ? (v / total * 100) : 0;
+  document.getElementById("bar").innerHTML =
+    `<div style="width:${pct(used)}%;background:var(--used)"></div>` +
+    `<div style="width:${pct(ghost)}%;background:var(--ghost)"></div>` +
+    `<div style="width:${pct(free)}%;background:var(--free)"></div>`;
+
+  const rows = list.map(i => ({
+    coord: `${i.x}:${i.y}`, x: i.x, y: i.y,
+    total: i.total, used: i.used, ghost: i.ghost, free: i.total - i.used - i.ghost
+  }));
+  rows.sort((a, b) => {
+    if (sortKey === "coord") return sortDir * ((a.x - b.x) || (a.y - b.y));
+    return sortDir * (a[sortKey] - b[sortKey]);
+  });
+  document.getElementById("rows").innerHTML = rows.map(r =>
+    `<tr><td>${r.coord}</td><td>${r.total}</td><td>${r.used}</td><td>${r.ghost}</td><td><b>${r.free}</b></td></tr>`
+  ).join("");
+}
+
+document.getElementById("ocean").addEventListener("change", e => {
+  currentOcean = +e.target.value; render();
+});
+document.querySelectorAll("th[data-k]").forEach(th => th.addEventListener("click", () => {
+  const k = th.dataset.k;
+  if (sortKey === k) sortDir = -sortDir; else { sortKey = k; sortDir = -1; }
+  render();
+}));
+
+// Chargement automatique (GitHub Pages)
+(async () => {
+  try {
+    const [ri, rt] = await Promise.all([
+      fetch(ISLANDS_URL, { cache: "no-cache" }),
+      fetch(TOWNS_URL, { cache: "no-cache" })
+    ]);
+    if (!ri.ok || !rt.ok) throw new Error("HTTP");
+    load(await ri.text(), await rt.text(), rt.headers.get("Last-Modified"));
+  } catch (e) {
+    document.getElementById("meta").textContent = "Chargement automatique impossible.";
+    document.getElementById("manual").style.display = "";
+  }
+})();
+
+// Repli : sélection manuelle des fichiers
+document.getElementById("pick").addEventListener("change", async e => {
+  let isl = null, tow = null;
+  for (const f of e.target.files) {
+    if (/islands/i.test(f.name)) isl = await f.text();
+    if (/towns/i.test(f.name)) tow = await f.text();
+  }
+  if (isl && tow) load(isl, tow);
+  else alert("Sélectionne à la fois islands.txt et towns.txt.");
+});
+</script>
+</body>
+</html>
