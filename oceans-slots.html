@@ -119,7 +119,7 @@ function parseLines(text) {
 
 function load(islandsText, townsText, lastModified) {
   islands = parseLines(islandsText).map(c => ({
-    x: +c[1], y: +c[2], total: +c[4]
+    x: +c[1], y: +c[2], free: +c[4]
   })).filter(i => !isNaN(i.x) && !isNaN(i.y));
 
   // towns.txt : town_id, player_id, name, island_x, island_y, slot_number, points
@@ -129,7 +129,7 @@ function load(islandsText, townsText, lastModified) {
 
   const islandMap = new Map(); // "x:y" -> island stats
   for (const i of islands) {
-    islandMap.set(i.x + ":" + i.y, { x: i.x, y: i.y, total: i.total, used: 0, ghost: 0 });
+    islandMap.set(i.x + ":" + i.y, { x: i.x, y: i.y, free: i.free, total: 0, used: 0, ghost: 0 });
   }
   for (const t of towns) {
     const isl = islandMap.get(t.x + ":" + t.y);
@@ -138,6 +138,8 @@ function load(islandsText, townsText, lastModified) {
   }
   byOcean = {};
   for (const isl of islandMap.values()) {
+    // Colonne 5 de islands.txt = places libres ; total = libres + villes existantes (joueurs + fantômes)
+    isl.total = isl.free + isl.used + isl.ghost;
     const o = oceanOf(isl.x, isl.y);
     (byOcean[o] ||= []).push(isl);
   }
