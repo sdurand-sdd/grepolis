@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Récupérer le dépôt
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Télécharger et vérifier les 4 fichiers
         run: |
