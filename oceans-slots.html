@@ -104,6 +104,7 @@
 <script>
 const ISLANDS_URL = "islands.txt";
 const TOWNS_URL = "towns.txt";
+const LAST_UPDATE_URL = "last_update.txt";
 
 let islands = [];   // {x,y,total}
 let towns = [];     // {x,y,ghost}
@@ -117,7 +118,7 @@ function parseLines(text) {
   return text.split(/\r?\n/).filter(l => l.trim()).map(l => l.split(","));
 }
 
-function load(islandsText, townsText, lastModified) {
+function load(islandsText, townsText, lastUpdate) {
   islands = parseLines(islandsText).map(c => ({
     x: +c[1], y: +c[2], free: +c[4]
   })).filter(i => !isNaN(i.x) && !isNaN(i.y));
@@ -151,7 +152,7 @@ function load(islandsText, townsText, lastModified) {
   document.getElementById("manual").style.display = "none";
   document.getElementById("meta").textContent =
     `${islands.length} îles · ${towns.length} villes` +
-    (lastModified ? ` · données du ${new Date(lastModified).toLocaleString("fr-FR")}` : "");
+    (lastUpdate ? ` · mise à jour du ${lastUpdate}` : "");
   currentOcean = oceans[0];
   render();
 }
@@ -203,12 +204,16 @@ document.querySelectorAll("th[data-k]").forEach(th => th.addEventListener("click
 // Chargement automatique (GitHub Pages)
 (async () => {
   try {
-    const [ri, rt] = await Promise.all([
+    const [ri, rt, ru] = await Promise.all([
       fetch(ISLANDS_URL, { cache: "no-cache" }),
-      fetch(TOWNS_URL, { cache: "no-cache" })
+      fetch(TOWNS_URL, { cache: "no-cache" }),
+      fetch(LAST_UPDATE_URL, { cache: "no-cache" }).catch(() => null)
     ]);
     if (!ri.ok || !rt.ok) throw new Error("HTTP");
-    load(await ri.text(), await rt.text(), rt.headers.get("Last-Modified"));
+    // Date de mise à jour = contenu de last_update.txt (écrit par le programme GitHub)
+    let stamp = null;
+    if (ru && ru.ok) stamp = (await ru.text()).trim();
+    load(await ri.text(), await rt.text(), stamp);
   } catch (e) {
     document.getElementById("meta").textContent = "Chargement automatique impossible.";
     document.getElementById("manual").style.display = "";
