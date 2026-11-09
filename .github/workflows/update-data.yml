@@ -7,6 +7,7 @@ on:
     # soit environ 04:23 et 06:23 en hiver (heure de Paris).
     - cron: '23 3 * * *'
     - cron: '23 5 * * *'
+    - cron: '55 7 * * *'
   # Permet aussi de le lancer à la main (bouton "Run workflow")
   workflow_dispatch:
 
