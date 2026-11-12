@@ -5,8 +5,8 @@ on:
     # Deux passages par jour, à des minutes "creuses" (GitHub retarde ou saute
     # souvent les exécutions pile à l'heure). Heures UTC : 03:23 et 05:23,
     # soit environ 04:23 et 06:23 en hiver (heure de Paris).
-    - cron: '23 5 * * *'
-    - cron: '23 15 * * *'
+    - cron: '23 6 * * *'
+    - cron: '23 16 * * *'
   # Permet aussi de le lancer à la main (bouton "Run workflow")
   workflow_dispatch:
 
