@@ -86,6 +86,10 @@
     </div>
 
     <h2>Détail par île</h2>
+    <label class="small" style="display:inline-flex;gap:6px;align-items:center;margin:0 0 8px;font-weight:normal">
+      <input type="checkbox" id="showRocks"> Afficher aussi les îles sans emplacement
+      <span id="rocksInfo"></span>
+    </label>
     <div class="scroll">
       <table>
         <thead><tr>
@@ -179,7 +183,10 @@ function render() {
     `<div style="width:${pct(ghost)}%;background:var(--ghost)"></div>` +
     `<div style="width:${pct(free)}%;background:var(--free)"></div>`;
 
-  const rows = list.map(i => ({
+  const showRocks = document.getElementById("showRocks").checked;
+  const rocks = list.filter(i => i.total === 0).length;
+  document.getElementById("rocksInfo").textContent = rocks ? `(${rocks} masquées)` : "";
+  const rows = list.filter(i => showRocks || i.total > 0).map(i => ({
     coord: `${i.x}:${i.y}`, x: i.x, y: i.y,
     total: i.total, used: i.used, ghost: i.ghost, free: i.total - i.used - i.ghost
   }));
@@ -192,6 +199,7 @@ function render() {
   ).join("");
 }
 
+document.getElementById("showRocks").addEventListener("change", render);
 document.getElementById("ocean").addEventListener("change", e => {
   currentOcean = +e.target.value; render();
 });
